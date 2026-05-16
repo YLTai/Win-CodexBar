@@ -1235,32 +1235,41 @@ fn build_fetch_context(
     let active_token_api_key = active_token_env.and_then(|env| env.values().next().cloned());
     let usage_source = SourceMode::parse(settings.usage_source(id)).unwrap_or_default();
 
-    let (source_mode, cookie_header) = match cookie_source {
-        _ if active_token_env.is_some() => (SourceMode::OAuth, None),
-        "off" => (SourceMode::Cli, None),
-        "manual" => {
-            let cookie_header = active_token_cookie.or(stored_cookie);
-            let source_mode = if cookie_header.is_some() {
-                SourceMode::Web
-            } else {
-                SourceMode::Cli
-            };
-            (source_mode, cookie_header)
+    let (source_mode, cookie_header) = if id.cookie_domain().is_none() {
+        let source_mode = if active_token_env.is_some() {
+            SourceMode::OAuth
+        } else {
+            usage_source
+        };
+        (source_mode, None)
+    } else {
+        match cookie_source {
+            _ if active_token_env.is_some() => (SourceMode::OAuth, None),
+            "off" => (SourceMode::Cli, None),
+            "manual" => {
+                let cookie_header = active_token_cookie.or(stored_cookie);
+                let source_mode = if cookie_header.is_some() {
+                    SourceMode::Web
+                } else {
+                    SourceMode::Cli
+                };
+                (source_mode, cookie_header)
+            }
+            // `browser` is accepted as a legacy alias from older settings.
+            "auto" | "browser" | "web" => {
+                // Try browser cookie extraction as fallback when no manual cookie is set.
+                // On non-Windows this is a harmless no-op that returns an error.
+                let cookie_header = active_token_cookie.or(stored_cookie).or_else(|| {
+                    id.cookie_domain().and_then(|domain| {
+                        codexbar::browser::cookies::get_cookie_header(domain)
+                            .ok()
+                            .filter(|h| !h.is_empty())
+                    })
+                });
+                (usage_source, cookie_header)
+            }
+            _ => (usage_source, stored_cookie),
         }
-        // `browser` is accepted as a legacy alias from older settings.
-        "auto" | "browser" | "web" => {
-            // Try browser cookie extraction as fallback when no manual cookie is set.
-            // On non-Windows this is a harmless no-op that returns an error.
-            let cookie_header = active_token_cookie.or(stored_cookie).or_else(|| {
-                id.cookie_domain().and_then(|domain| {
-                    codexbar::browser::cookies::get_cookie_header(domain)
-                        .ok()
-                        .filter(|h| !h.is_empty())
-                })
-            });
-            (usage_source, cookie_header)
-        }
-        _ => (usage_source, stored_cookie),
     };
 
     let api_key = api_keys
@@ -3257,6 +3266,27 @@ mod tests {
 
         assert_eq!(ctx.source_mode, SourceMode::Web);
         assert_eq!(ctx.manual_cookie_header.as_deref(), Some("session=abc123"));
+    }
+
+    #[test]
+    fn fetch_context_api_key_provider_uses_auto_without_cookie_import() {
+        let settings = Settings::default();
+        let cookies = ManualCookies::default();
+        let mut api_keys = ApiKeys::default();
+        api_keys.set("deepseek", "sk-test", None);
+        let token_accounts = HashMap::new();
+
+        let ctx = super::build_fetch_context(
+            ProviderId::DeepSeek,
+            &settings,
+            &cookies,
+            &api_keys,
+            &token_accounts,
+        );
+
+        assert_eq!(ctx.source_mode, SourceMode::Auto);
+        assert!(ctx.manual_cookie_header.is_none());
+        assert_eq!(ctx.api_key.as_deref(), Some("sk-test"));
     }
 
     #[test]
