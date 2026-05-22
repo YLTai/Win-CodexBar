@@ -4,6 +4,18 @@
 
 ---
 
+## [Windows] 0.27.4 - 2026-05-23
+
+### Added
+- Add Floating Bar light-background mode for better contrast on bright desktops.
+- Show localized provider reset timing in Floating Bar pill tooltips.
+
+### Fixed
+- Apply the Floating Bar opacity slider through the rendered bar so visual opacity updates reliably.
+- Keep the Floating Bar release build compiling on the repo's active Tauri 2.10 API surface.
+
+---
+
 ## [Windows] 0.27.3 - 2026-05-21
 
 ### Fixed
