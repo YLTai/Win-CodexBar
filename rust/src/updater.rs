@@ -254,97 +254,118 @@ pub async fn download_update(
     update_info: &UpdateInfo,
     progress_tx: watch::Sender<UpdateState>,
 ) -> Result<PathBuf, String> {
-    if !update_info.supports_auto_download() {
-        return Err("This update must be downloaded manually from the release page.".to_string());
-    }
+    validate_auto_download(update_info)?;
 
-    let download_dir =
-        get_download_dir().ok_or_else(|| "Could not determine download directory".to_string())?;
-
-    // Create download directory if it doesn't exist
-    std::fs::create_dir_all(&download_dir)
-        .map_err(|e| format!("Failed to create download directory: {}", e))?;
-
-    // Extract filename from URL or use default
-    let filename = update_info
-        .download_url
-        .split('/')
-        .next_back()
-        .unwrap_or("CodexBar-Setup.exe")
-        .to_string();
-
-    let file_path = download_dir.join(&filename);
-
-    // Start download
-    let client = reqwest::Client::builder()
-        .user_agent("CodexBar")
-        .build()
-        .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
-
-    let response = client
-        .get(&update_info.download_url)
-        .send()
-        .await
-        .map_err(|e| format!("Failed to start download: {}", e))?;
-
-    if !response.status().is_success() {
-        return Err(format!(
-            "Download failed with status: {}",
-            response.status()
-        ));
-    }
-
-    let total_size = response.content_length().unwrap_or(0);
-
-    // Create file for writing
-    let mut file = tokio::fs::File::create(&file_path)
-        .await
-        .map_err(|e| format!("Failed to create file: {}", e))?;
-
-    use tokio::io::AsyncWriteExt;
-
-    let mut downloaded: u64 = 0;
-    let mut stream = response.bytes_stream();
-
-    use futures::StreamExt;
-
-    while let Some(chunk) = stream.next().await {
-        let chunk = chunk.map_err(|e| format!("Error downloading chunk: {}", e))?;
-
-        file.write_all(&chunk)
-            .await
-            .map_err(|e| format!("Failed to write chunk: {}", e))?;
-
-        downloaded += chunk.len() as u64;
-
-        // Calculate and send progress
-        let progress = if total_size > 0 {
-            (downloaded as f32 / total_size as f32).clamp(0.0, 1.0)
-        } else {
-            0.0
-        };
-
-        let _ = progress_tx.send(UpdateState::Downloading(progress));
-    }
-
-    file.flush()
-        .await
-        .map_err(|e| format!("Failed to flush file: {}", e))?;
-
-    // Verify download integrity using SHA256 checksum from release metadata
-    verify_download_hash(
-        &file_path,
-        update_info
-            .expected_sha256
-            .as_deref()
-            .ok_or_else(|| "Missing SHA256 digest for update asset".to_string())?,
-    )
-    .await?;
+    let file_path = prepare_download_path(update_info)?;
+    let response = start_download(&update_info.download_url).await?;
+    write_download_response(response, &file_path, &progress_tx).await?;
+    verify_download_hash(&file_path, expected_update_sha256(update_info)?).await?;
 
     // Signal download complete
     let _ = progress_tx.send(UpdateState::Ready(file_path.clone()));
 
     Ok(file_path)
+}
+
+fn validate_auto_download(update_info: &UpdateInfo) -> Result<(), String> {
+    if update_info.supports_auto_download() {
+        Ok(())
+    } else {
+        Err("This update must be downloaded manually from the release page.".to_string())
+    }
+}
+
+fn prepare_download_path(update_info: &UpdateInfo) -> Result<PathBuf, String> {
+    let download_dir =
+        get_download_dir().ok_or_else(|| "Could not determine download directory".to_string())?;
+
+    std::fs::create_dir_all(&download_dir)
+        .map_err(|e| format!("Failed to create download directory: {}", e))?;
+
+    Ok(download_dir.join(download_filename(&update_info.download_url)))
+}
+
+fn download_filename(download_url: &str) -> String {
+    download_url
+        .split('/')
+        .next_back()
+        .unwrap_or("CodexBar-Setup.exe")
+        .to_string()
+}
+
+fn expected_update_sha256(update_info: &UpdateInfo) -> Result<&str, String> {
+    update_info
+        .expected_sha256
+        .as_deref()
+        .ok_or_else(|| "Missing SHA256 digest for update asset".to_string())
+}
+
+fn update_http_client() -> Result<reqwest::Client, String> {
+    reqwest::Client::builder()
+        .user_agent("CodexBar")
+        .build()
+        .map_err(|e| format!("Failed to create HTTP client: {}", e))
+}
+
+async fn start_download(download_url: &str) -> Result<reqwest::Response, String> {
+    let response = update_http_client()?
+        .get(download_url)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to start download: {}", e))?;
+
+    if response.status().is_success() {
+        Ok(response)
+    } else {
+        Err(format!(
+            "Download failed with status: {}",
+            response.status()
+        ))
+    }
+}
+
+async fn write_download_response(
+    response: reqwest::Response,
+    file_path: &Path,
+    progress_tx: &watch::Sender<UpdateState>,
+) -> Result<(), String> {
+    use futures::StreamExt;
+    use tokio::io::AsyncWriteExt;
+
+    let total_size = response.content_length().unwrap_or(0);
+    let mut downloaded: u64 = 0;
+    let mut stream = response.bytes_stream();
+    let mut file = tokio::fs::File::create(file_path)
+        .await
+        .map_err(|e| format!("Failed to create file: {}", e))?;
+
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| format!("Error downloading chunk: {}", e))?;
+        file.write_all(&chunk)
+            .await
+            .map_err(|e| format!("Failed to write chunk: {}", e))?;
+
+        downloaded += chunk.len() as u64;
+        send_download_progress(progress_tx, downloaded, total_size);
+    }
+
+    file.flush()
+        .await
+        .map_err(|e| format!("Failed to flush file: {}", e))
+}
+
+fn send_download_progress(
+    progress_tx: &watch::Sender<UpdateState>,
+    downloaded: u64,
+    total_size: u64,
+) {
+    let progress = if total_size > 0 {
+        (downloaded as f32 / total_size as f32).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+
+    let _ = progress_tx.send(UpdateState::Downloading(progress));
 }
 
 /// Verify the SHA256 hash of a downloaded file against release metadata.
