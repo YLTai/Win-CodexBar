@@ -272,18 +272,28 @@ try {
     }
     $process.WaitForExit()
     $process.Refresh()
-    if ($null -eq $process.ExitCode) {
-        Write-Host "Tauri build did not report an exit code. Last 200 stdout lines:"
-        if (Test-Path $tauriBuildLog) {
-            Get-Content $tauriBuildLog -Tail 200
-        }
-        Write-Host "Last 200 stderr lines:"
-        if (Test-Path $tauriBuildErrLog) {
-            Get-Content $tauriBuildErrLog -Tail 200
-        }
-        throw "pnpm tauri build completed without a reliable exit code"
+    $releaseBinDir = if ($env:CARGO_BUILD_TARGET) {
+        Join-Path $DesktopCargoTargetDir "$($env:CARGO_BUILD_TARGET)\release"
+    } else {
+        Join-Path $DesktopCargoTargetDir "release"
     }
-    $tauriExitCode = $process.ExitCode
+    $sourceExe = Join-Path $releaseBinDir "codexbar-desktop-tauri.exe"
+    if ($null -eq $process.ExitCode) {
+        if (Test-Path $sourceExe) {
+            Write-Host "Warning: Tauri build did not report an exit code, but produced $sourceExe."
+        } else {
+            Write-Host "Tauri build did not report an exit code. Last 200 stdout lines:"
+            if (Test-Path $tauriBuildLog) {
+                Get-Content $tauriBuildLog -Tail 200
+            }
+            Write-Host "Last 200 stderr lines:"
+            if (Test-Path $tauriBuildErrLog) {
+                Get-Content $tauriBuildErrLog -Tail 200
+            }
+            throw "pnpm tauri build completed without a reliable exit code"
+        }
+    }
+    $tauriExitCode = if ($null -eq $process.ExitCode) { 0 } else { $process.ExitCode }
     if ($tauriExitCode -ne 0) {
         Write-Host "Tauri build failed with exit code $tauriExitCode. Last 200 stdout lines:"
         if (Test-Path $tauriBuildLog) {
@@ -296,12 +306,6 @@ try {
         throw "pnpm tauri build exited with code $tauriExitCode"
     }
 
-    $releaseBinDir = if ($env:CARGO_BUILD_TARGET) {
-        Join-Path $DesktopCargoTargetDir "$($env:CARGO_BUILD_TARGET)\release"
-    } else {
-        Join-Path $DesktopCargoTargetDir "release"
-    }
-    $sourceExe = Join-Path $releaseBinDir "codexbar-desktop-tauri.exe"
     $releaseExe = Join-Path $releaseBinDir "codexbar.exe"
     if (-not (Test-Path $sourceExe)) {
         throw "Missing expected Tauri binary: $sourceExe"
