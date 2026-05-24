@@ -53,7 +53,8 @@ Install-ChocoPackages $packages
 $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" +
     [System.Environment]::GetEnvironmentVariable("Path", "User")
 
-if (-not (Get-Command rustup -ErrorAction SilentlyContinue)) {
+$hasRustToolchain = (Test-Command "cargo") -and (Test-Command "rustc")
+if (-not $hasRustToolchain -and -not (Test-Command "rustup")) {
     choco install rustup.install -y --no-progress
     $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" +
         [System.Environment]::GetEnvironmentVariable("Path", "User")
@@ -62,14 +63,20 @@ if (-not (Get-Command rustup -ErrorAction SilentlyContinue)) {
     }
 }
 
-rustup default stable-x86_64-pc-windows-msvc
-if ($LASTEXITCODE -ne 0) {
-    throw "rustup default failed with exit code $LASTEXITCODE"
-}
+if (Test-Command "rustup") {
+    rustup default stable-x86_64-pc-windows-msvc
+    if ($LASTEXITCODE -ne 0) {
+        throw "rustup default failed with exit code $LASTEXITCODE"
+    }
 
-rustup set auto-self-update disable
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "Warning: rustup auto-self-update disable failed with exit code $LASTEXITCODE"
+    rustup set auto-self-update disable
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Warning: rustup auto-self-update disable failed with exit code $LASTEXITCODE"
+    }
+} elseif ((Test-Command "cargo") -and (Test-Command "rustc")) {
+    Write-Host "Using cached Rust toolchain without rustup on PATH."
+} else {
+    throw "Missing Rust toolchain after install/cache restore."
 }
 
 $env:CARGO_BUILD_TARGET = "x86_64-pc-windows-msvc"
