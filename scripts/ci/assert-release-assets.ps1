@@ -2,14 +2,11 @@
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
-trap {
-    Write-Host $_
-    [Environment]::Exit(1)
-}
 
 $versionLine = Get-Content rust\Cargo.toml | Where-Object { $_ -match '^version = "([^"]+)"' } | Select-Object -First 1
 if ($versionLine -notmatch '^version = "([^"]+)"') {
-    throw "Failed to determine version from rust\Cargo.toml"
+    Write-Host "Failed to determine version from rust\Cargo.toml"
+    [Environment]::Exit(1)
 }
 
 $version = $Matches[1]
@@ -23,7 +20,8 @@ foreach ($name in @(
 )) {
     $path = Join-Path $assetsDir $name
     if (-not (Test-Path -LiteralPath $path)) {
-        throw "Missing release artifact: $path"
+        Write-Host "Missing release artifact: $path"
+        [Environment]::Exit(1)
     }
     Write-Host "Found $path"
 }

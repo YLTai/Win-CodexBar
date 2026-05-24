@@ -35,7 +35,7 @@ jobs:
           name: Build and smoke test Windows release
           shell: cmd.exe
           no_output_timeout: 30m
-          command: set CARGO_BUILD_TARGET=x86_64-pc-windows-msvc && powershell.exe -NoLogo -ExecutionPolicy Bypass -File scripts\ci\circleci-release.ps1
+          command: set "CARGO_BUILD_TARGET=x86_64-pc-windows-msvc" && powershell.exe -NoLogo -ExecutionPolicy Bypass -File scripts\ci\circleci-release.ps1
 
       - run:
           name: Assert release artifacts

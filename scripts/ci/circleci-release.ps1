@@ -7,10 +7,6 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
-trap {
-    Write-Host $_
-    [Environment]::Exit(1)
-}
 
 $RepoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $WorkRoot = "C:\code\Win-CodexBar-release"
@@ -31,12 +27,14 @@ try {
     $preBuildAssetsDir = Join-Path $env:TEMP ("win-codexbar-no-prebuild-assets-" + [guid]::NewGuid().ToString("n"))
     & powershell.exe -NoLogo -ExecutionPolicy Bypass -File "scripts\release-doctor.ps1" -SkipGitHub -AssetsDir $preBuildAssetsDir
     if ($LASTEXITCODE -ne 0) {
-        throw "release-doctor.ps1 failed with exit code $LASTEXITCODE"
+        Write-Host "release-doctor.ps1 failed with exit code $LASTEXITCODE"
+        [Environment]::Exit($LASTEXITCODE)
     }
 
     & powershell.exe -NoLogo -ExecutionPolicy Bypass -File "scripts\windows-release-build.ps1" -Ref $Ref -WorkRoot $WorkRoot -SmokeInstall
     if ($LASTEXITCODE -ne 0) {
-        throw "windows-release-build.ps1 failed with exit code $LASTEXITCODE"
+        Write-Host "windows-release-build.ps1 failed with exit code $LASTEXITCODE"
+        [Environment]::Exit($LASTEXITCODE)
     }
 
     $smokeLog = Join-Path $env:TEMP "codexbar-installer-smoke\install.log"
@@ -52,7 +50,8 @@ if ($line -match '^version = "([^"]+)"') { $Matches[1] }
     if ($UploadCloudflare) {
         & powershell.exe -NoLogo -ExecutionPolicy Bypass -File "scripts\ci\upload-cloudflare-r2.ps1" -Version $version -AssetsDir $AssetsDir
         if ($LASTEXITCODE -ne 0) {
-            throw "upload-cloudflare-r2.ps1 failed with exit code $LASTEXITCODE"
+            Write-Host "upload-cloudflare-r2.ps1 failed with exit code $LASTEXITCODE"
+            [Environment]::Exit($LASTEXITCODE)
         }
     } else {
         Write-Host "Cloudflare R2 upload skipped. Pass -UploadCloudflare to enable it."
