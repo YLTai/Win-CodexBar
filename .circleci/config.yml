@@ -36,7 +36,7 @@ jobs:
           no_output_timeout: 30m
           command: |
             set CARGO_BUILD_TARGET=x86_64-pc-windows-msvc
-            if "<< parameters.upload_cloudflare >>"=="true" (powershell.exe -NoLogo -ExecutionPolicy Bypass -File scripts\ci\circleci-release.ps1 -UploadCloudflare) else (powershell.exe -NoLogo -ExecutionPolicy Bypass -File scripts\ci\circleci-release.ps1)
+            powershell.exe -NoLogo -ExecutionPolicy Bypass -File scripts\ci\circleci-release.ps1
             if errorlevel 1 exit /b %errorlevel%
 
       - run:

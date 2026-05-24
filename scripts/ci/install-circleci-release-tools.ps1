@@ -3,7 +3,7 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 trap {
-    Write-Error $_
+    Write-Host $_
     [Environment]::Exit(1)
 }
 
