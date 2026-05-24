@@ -77,25 +77,11 @@ jobs:
 
       - run:
           name: Build and smoke test Windows release
-          shell: powershell.exe
+          shell: cmd.exe /s /c
           no_output_timeout: 30m
           command: |
-            $ErrorActionPreference = "Stop"
-            trap {
-              Write-Error $_
-              exit 1
-            }
-            $env:CARGO_BUILD_TARGET = "x86_64-pc-windows-msvc"
-            $uploadCloudflare = [System.Boolean]::Parse("<< parameters.upload_cloudflare >>")
-            $args = @("-NoLogo", "-ExecutionPolicy", "Bypass", "-File", "scripts\ci\circleci-release.ps1")
-            if ($uploadCloudflare) {
-              $args += "-UploadCloudflare"
-            }
-            powershell.exe @args
-            if ($LASTEXITCODE -ne 0) {
-              Write-Error "circleci-release.ps1 failed with exit code $LASTEXITCODE"
-              exit $LASTEXITCODE
-            }
+            powershell.exe -NoLogo -ExecutionPolicy Bypass -Command "$ErrorActionPreference = 'Stop'; $env:CARGO_BUILD_TARGET = 'x86_64-pc-windows-msvc'; $env:RUSTUP_TOOLCHAIN = 'stable-x86_64-pc-windows-msvc'; $args = @('-NoLogo', '-ExecutionPolicy', 'Bypass', '-File', 'scripts\ci\circleci-release.ps1'); if ([System.Boolean]::Parse('<< parameters.upload_cloudflare >>')) { $args += '-UploadCloudflare' }; & powershell.exe @args; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }"
+            if ERRORLEVEL 1 exit /b %ERRORLEVEL%
 
       - store_artifacts:
           path: C:\code\Win-CodexBar-release\assets

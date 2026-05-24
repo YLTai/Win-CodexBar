@@ -164,7 +164,10 @@ try {
         $env:CARGO_BUILD_TARGET = "x86_64-pc-windows-msvc"
     }
     if ($env:CARGO_BUILD_TARGET -and $rustup) {
-        Invoke-Native $rustup.Source @("target", "add", $env:CARGO_BUILD_TARGET)
+        $toolchain = if ($env:RUSTUP_TOOLCHAIN) { $env:RUSTUP_TOOLCHAIN } else { "stable-x86_64-pc-windows-msvc" }
+        Invoke-Native $rustup.Source @("toolchain", "install", $toolchain, "--profile", "minimal")
+        Invoke-Native $rustup.Source @("target", "add", $env:CARGO_BUILD_TARGET, "--toolchain", $toolchain)
+        $env:RUSTUP_TOOLCHAIN = $toolchain
     }
     $env:PNPM_HOME = if ($env:PNPM_HOME) { $env:PNPM_HOME } else { Join-Path $CacheDir "pnpm-home" }
 
