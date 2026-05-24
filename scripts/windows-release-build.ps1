@@ -132,6 +132,28 @@ function Assert-MicrosoftSignature {
     }
 }
 
+function Invoke-DownloadWithRetry {
+    param(
+        [string]$Uri,
+        [string]$OutFile,
+        [int]$Attempts = 3
+    )
+
+    for ($attempt = 1; $attempt -le $Attempts; $attempt++) {
+        try {
+            Write-Host "Downloading $Uri (attempt $attempt/$Attempts)"
+            Invoke-WebRequest -Uri $Uri -OutFile $OutFile
+            return
+        } catch {
+            if ($attempt -eq $Attempts) {
+                throw
+            }
+            Write-Host "Download failed: $($_.Exception.Message)"
+            Start-Sleep -Seconds (5 * $attempt)
+        }
+    }
+}
+
 function Get-ObjdumpImportsWebView2Loader {
     param([string]$ExePath)
 
@@ -288,10 +310,10 @@ try {
     $webView2BootstrapperPath = Join-Path $InstallerDepsDir "MicrosoftEdgeWebview2Setup.exe"
 
     if ($RefreshInstallerDependencies -or -not (Test-Path $vcRedistPath)) {
-        Invoke-WebRequest -Uri "https://aka.ms/vc14/vc_redist.x64.exe" -OutFile $vcRedistPath
+        Invoke-DownloadWithRetry -Uri "https://aka.ms/vc14/vc_redist.x64.exe" -OutFile $vcRedistPath
     }
     if ($RefreshInstallerDependencies -or -not (Test-Path $webView2BootstrapperPath)) {
-        Invoke-WebRequest -Uri "https://go.microsoft.com/fwlink/p/?LinkId=2124703" -OutFile $webView2BootstrapperPath
+        Invoke-DownloadWithRetry -Uri "https://go.microsoft.com/fwlink/p/?LinkId=2124703" -OutFile $webView2BootstrapperPath
     }
 
     Assert-MicrosoftSignature -Path $vcRedistPath
