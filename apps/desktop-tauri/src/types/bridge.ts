@@ -54,6 +54,7 @@ export type ProofProviderId =
   | "synthetic"
   | "jetbrains"
   | "alibaba"
+  | "alibabatokenplan"
   | "nanogpt"
   | "infini"
   | "perplexity"

@@ -202,15 +202,24 @@ impl OpenCodeProvider {
             None,
         );
 
-        let usage = UsageSnapshot::new(primary)
+        let mut usage = UsageSnapshot::new(primary)
             .with_secondary(secondary)
             .with_login_method("OpenCode");
+        if let Some(renews_at) = self.extract_renewal_regex(text) {
+            usage = usage.with_extra_rate_window(
+                "renewal",
+                "Renews",
+                RateWindow::with_details(0.0, None, Some(renews_at), None),
+            );
+        }
 
         Ok(usage)
     }
 
     /// Parse usage from JSON response
     fn parse_usage_json(&self, json: &Value, now: DateTime<Utc>) -> Option<UsageSnapshot> {
+        let renews_at = self.find_datetime(json, &["renewAt", "renew_at"]);
+
         // Look for rollingUsage and weeklyUsage
         let rolling =
             self.find_usage_window(json, &["rollingUsage", "rolling", "rolling_usage"])?;
@@ -230,9 +239,16 @@ impl OpenCodeProvider {
             None,
         );
 
-        let usage = UsageSnapshot::new(primary)
+        let mut usage = UsageSnapshot::new(primary)
             .with_secondary(secondary)
             .with_login_method("OpenCode");
+        if let Some(renews_at) = renews_at {
+            usage = usage.with_extra_rate_window(
+                "renewal",
+                "Renews",
+                RateWindow::with_details(0.0, None, Some(renews_at), None),
+            );
+        }
 
         Some(usage)
     }
@@ -333,12 +349,71 @@ impl OpenCodeProvider {
         Some((reset_at - now).max(0))
     }
 
+    fn find_datetime(&self, json: &Value, keys: &[&str]) -> Option<DateTime<Utc>> {
+        for key in keys {
+            if let Some(value) = json.get(key)
+                && let Some(parsed) = Self::date_from_value(value)
+            {
+                return Some(parsed);
+            }
+        }
+
+        if let Some(obj) = json.as_object() {
+            for value in obj.values() {
+                if let Some(parsed) = self.find_datetime(value, keys) {
+                    return Some(parsed);
+                }
+            }
+        }
+        None
+    }
+
     fn first_f64(obj: &Value, keys: &[&str]) -> Option<f64> {
         keys.iter().find_map(|key| obj.get(*key)?.as_f64())
     }
 
     fn first_i64(obj: &Value, keys: &[&str]) -> Option<i64> {
         keys.iter().find_map(|key| obj.get(*key)?.as_i64())
+    }
+
+    fn date_from_value(value: &Value) -> Option<DateTime<Utc>> {
+        if let Some(number) = value.as_i64() {
+            return Self::date_from_timestamp(number as f64);
+        }
+        if let Some(number) = value.as_f64() {
+            return Self::date_from_timestamp(number);
+        }
+        let text = value.as_str()?.trim();
+        if text.is_empty() {
+            return None;
+        }
+        if let Ok(number) = text.parse::<f64>() {
+            return Self::date_from_timestamp(number);
+        }
+        DateTime::parse_from_rfc3339(text)
+            .ok()
+            .map(|dt| dt.with_timezone(&Utc))
+    }
+
+    fn date_from_timestamp(number: f64) -> Option<DateTime<Utc>> {
+        if !number.is_finite() || number <= 0.0 {
+            return None;
+        }
+        let seconds = if number > 10_000_000_000.0 {
+            number / 1000.0
+        } else {
+            number
+        };
+        DateTime::<Utc>::from_timestamp(seconds as i64, 0)
+    }
+
+    fn extract_renewal_regex(&self, text: &str) -> Option<DateTime<Utc>> {
+        let re = regex_lite::Regex::new(
+            r#"(?:"renewAt"|"renew_at"|renewAt|renew_at)\s*[:=]\s*"?([^",}\s]+)"?"#,
+        )
+        .ok()?;
+        let raw = re.captures(text)?.get(1)?.as_str();
+        Self::date_from_value(&Value::String(raw.to_string()))
     }
 
     /// Extract usage via regex patterns
@@ -477,5 +552,33 @@ impl Provider for OpenCodeProvider {
 
     fn supports_cli(&self) -> bool {
         false
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_json_renewal_window() {
+        let provider = OpenCodeProvider::new();
+        let now = DateTime::<Utc>::from_timestamp(1_700_000_000, 0).unwrap();
+        let payload = serde_json::json!({
+            "rollingUsage": { "usagePercent": 10, "resetInSec": 600 },
+            "weeklyUsage": { "usagePercent": 50, "resetInSec": 3600 },
+            "renewAt": "2026-06-01T12:00:00Z"
+        });
+
+        let snap = provider.parse_usage_json(&payload, now).expect("snapshot");
+        let renewal = snap
+            .extra_rate_windows
+            .iter()
+            .find(|window| window.id == "renewal")
+            .expect("renewal window");
+        assert_eq!(renewal.title, "Renews");
+        assert_eq!(
+            renewal.window.resets_at.unwrap().to_rfc3339(),
+            "2026-06-01T12:00:00+00:00"
+        );
     }
 }

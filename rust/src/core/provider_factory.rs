@@ -7,15 +7,16 @@
 
 use super::{Provider, ProviderId};
 use crate::providers::{
-    AbacusProvider, AlibabaProvider, AmpProvider, AntigravityProvider, AugmentProvider,
-    AzureOpenAIProvider, BedrockProvider, ClaudeProvider, CodebuffProvider, CodexProvider,
-    CommandCodeProvider, CopilotProvider, CrofProvider, CursorProvider, DeepSeekProvider,
-    DeepgramProvider, DoubaoProvider, ElevenLabsProvider, FactoryProvider, GeminiProvider,
-    GrokProvider, GroqProvider, InfiniProvider, JetBrainsProvider, KiloProvider, KimiK2Provider,
-    KimiProvider, KiroProvider, LLMProxyProvider, ManusProvider, MiMoProvider, MiniMaxProvider,
-    MistralProvider, NanoGPTProvider, OllamaProvider, OpenAIApiProvider, OpenCodeGoProvider,
-    OpenCodeProvider, OpenRouterProvider, PerplexityProvider, StepFunProvider, SyntheticProvider,
-    T3ChatProvider, VeniceProvider, VertexAIProvider, WarpProvider, WindsurfProvider, ZaiProvider,
+    AbacusProvider, AlibabaProvider, AlibabaTokenPlanProvider, AmpProvider, AntigravityProvider,
+    AugmentProvider, AzureOpenAIProvider, BedrockProvider, ClaudeProvider, CodebuffProvider,
+    CodexProvider, CommandCodeProvider, CopilotProvider, CrofProvider, CursorProvider,
+    DeepSeekProvider, DeepgramProvider, DoubaoProvider, ElevenLabsProvider, FactoryProvider,
+    GeminiProvider, GrokProvider, GroqProvider, InfiniProvider, JetBrainsProvider, KiloProvider,
+    KimiK2Provider, KimiProvider, KiroProvider, LLMProxyProvider, ManusProvider, MiMoProvider,
+    MiniMaxProvider, MistralProvider, NanoGPTProvider, OllamaProvider, OpenAIApiProvider,
+    OpenCodeGoProvider, OpenCodeProvider, OpenRouterProvider, PerplexityProvider, StepFunProvider,
+    SyntheticProvider, T3ChatProvider, VeniceProvider, VertexAIProvider, WarpProvider,
+    WindsurfProvider, ZaiProvider,
 };
 
 /// Instantiate the concrete [`Provider`] implementation for a given [`ProviderId`].
@@ -48,6 +49,7 @@ pub fn instantiate(id: ProviderId) -> Box<dyn Provider> {
         ProviderId::Synthetic => Box::new(SyntheticProvider::new()),
         ProviderId::JetBrains => Box::new(JetBrainsProvider::new()),
         ProviderId::Alibaba => Box::new(AlibabaProvider::new()),
+        ProviderId::AlibabaTokenPlan => Box::new(AlibabaTokenPlanProvider::new()),
         ProviderId::NanoGPT => Box::new(NanoGPTProvider::new()),
         ProviderId::Infini => Box::new(InfiniProvider::default()),
         ProviderId::Perplexity => Box::new(PerplexityProvider::new()),

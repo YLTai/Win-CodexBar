@@ -4,6 +4,29 @@
 
 ---
 
+## [Windows] 0.29.0 - 2026-05-24
+
+### Added
+- Port upstream CodexBar 0.29 Alibaba Token Plan support to the Rust/Tauri provider registry, protected token-account storage, provider icon registry, and CLI aliases.
+- Show OpenCode and OpenCode Go renewal dates as a separate **Renews** usage window when their usage payloads expose `renewAt` / `renew_at`.
+- Split local Codex cost output into standard vs fast/priority buckets when local session logs expose fast model naming.
+
+### Fixed
+- Preserve the upstream 0.29 quote-handling intent through the existing Rust secret cleanup paths while keeping provider tokens out of frontend state and logs.
+
+---
+
+## [Windows] 0.28.0 - 2026-05-24
+
+### Added
+- Port upstream CodexBar 0.28 Azure OpenAI and T3 Chat provider support to the Windows/Tauri provider registry, Settings UI metadata, protected credential storage, and CLI aliases.
+- Add Ollama API-key support while keeping browser-cookie usage available as the Web source.
+
+### Fixed
+- Harden OpenAI dashboard account scraping and MiniMax billing aggregation for additional upstream response shapes.
+
+---
+
 ## [Windows] 0.27.4 - 2026-05-23
 
 ### Added

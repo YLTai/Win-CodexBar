@@ -68,6 +68,8 @@ pub struct OpenCodeUsageSnapshot {
     pub rolling_reset_in_sec: i64,
     /// Weekly reset in seconds
     pub weekly_reset_in_sec: i64,
+    /// Account renewal date when exposed by OpenCode.
+    pub renews_at: Option<DateTime<Utc>>,
     /// When this snapshot was captured
     pub updated_at: DateTime<Utc>,
 }
@@ -405,6 +407,7 @@ impl OpenCodeUsageFetcher {
                 weekly_usage_percent: wp,
                 rolling_reset_in_sec: rr,
                 weekly_reset_in_sec: wr,
+                renews_at: Self::extract_renewal(text),
                 updated_at: now,
             }),
             _ => Err(OpenCodeError::ParseFailed(
@@ -416,17 +419,20 @@ impl OpenCodeUsageFetcher {
     /// Parse subscription JSON
     fn parse_subscription_json(text: &str, now: DateTime<Utc>) -> Option<OpenCodeUsageSnapshot> {
         let json: serde_json::Value = serde_json::from_str(text).ok()?;
+        let renews_at = Self::find_datetime(&json, &["renewAt", "renew_at"]);
 
         // Try direct parsing
-        if let Some(snapshot) = Self::parse_usage_dict(&json, now) {
+        if let Some(mut snapshot) = Self::parse_usage_dict(&json, now) {
+            snapshot.renews_at = renews_at;
             return Some(snapshot);
         }
 
         // Try nested keys
         for key in ["data", "result", "usage", "billing", "payload"] {
             if let Some(nested) = json.get(key)
-                && let Some(snapshot) = Self::parse_usage_dict(nested, now)
+                && let Some(mut snapshot) = Self::parse_usage_dict(nested, now)
             {
+                snapshot.renews_at = snapshot.renews_at.or(renews_at);
                 return Some(snapshot);
             }
         }
@@ -454,6 +460,7 @@ impl OpenCodeUsageFetcher {
                 weekly_usage_percent: weekly_window.0,
                 rolling_reset_in_sec: rolling_window.1,
                 weekly_reset_in_sec: weekly_window.1,
+                renews_at: Self::find_datetime(json, &["renewAt", "renew_at"]),
                 updated_at: now,
             });
         }
@@ -482,6 +489,56 @@ impl OpenCodeUsageFetcher {
             }
             _ => None,
         }
+    }
+
+    fn find_datetime(json: &serde_json::Value, keys: &[&str]) -> Option<DateTime<Utc>> {
+        for key in keys {
+            if let Some(value) = json.get(*key)
+                && let Some(parsed) = Self::date_from_value(value)
+            {
+                return Some(parsed);
+            }
+        }
+
+        if let Some(obj) = json.as_object() {
+            for value in obj.values() {
+                if let Some(parsed) = Self::find_datetime(value, keys) {
+                    return Some(parsed);
+                }
+            }
+        }
+        None
+    }
+
+    fn date_from_value(value: &serde_json::Value) -> Option<DateTime<Utc>> {
+        if let Some(number) = value.as_i64() {
+            return Self::date_from_timestamp(number as f64);
+        }
+        if let Some(number) = value.as_f64() {
+            return Self::date_from_timestamp(number);
+        }
+        let text = value.as_str()?.trim();
+        if text.is_empty() {
+            return None;
+        }
+        if let Ok(number) = text.parse::<f64>() {
+            return Self::date_from_timestamp(number);
+        }
+        DateTime::parse_from_rfc3339(text)
+            .ok()
+            .map(|dt| dt.with_timezone(&Utc))
+    }
+
+    fn date_from_timestamp(number: f64) -> Option<DateTime<Utc>> {
+        if !number.is_finite() || number <= 0.0 {
+            return None;
+        }
+        let seconds = if number > 10_000_000_000.0 {
+            number / 1000.0
+        } else {
+            number
+        };
+        DateTime::<Utc>::from_timestamp(seconds as i64, 0)
     }
 
     /// Parse workspace IDs from text using regex
@@ -560,6 +617,14 @@ impl OpenCodeUsageFetcher {
         let captures = regex.captures(text)?;
         let value_str = captures.get(1)?.as_str();
         value_str.parse().ok()
+    }
+
+    fn extract_renewal(text: &str) -> Option<DateTime<Utc>> {
+        let regex =
+            Regex::new(r#"(?:"renewAt"|"renew_at"|renewAt|renew_at)\s*[:=]\s*"?([^",}\s]+)"?"#)
+                .ok()?;
+        let raw = regex.captures(text)?.get(1)?.as_str();
+        Self::date_from_value(&serde_json::Value::String(raw.to_string()))
     }
 }
 

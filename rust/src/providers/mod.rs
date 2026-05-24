@@ -4,6 +4,7 @@
 
 pub mod abacus;
 pub mod alibaba;
+pub mod alibabatokenplan;
 pub mod amp;
 pub mod antigravity;
 pub mod augment;
@@ -55,6 +56,7 @@ pub mod zai;
 // Re-export provider implementations
 pub use abacus::AbacusProvider;
 pub use alibaba::AlibabaProvider;
+pub use alibabatokenplan::AlibabaTokenPlanProvider;
 pub use amp::AmpProvider;
 pub use antigravity::AntigravityProvider;
 pub use augment::AugmentProvider;

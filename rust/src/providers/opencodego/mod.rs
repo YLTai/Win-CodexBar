@@ -5,7 +5,7 @@
 //! usage page for rolling/weekly/monthly windows.
 
 use async_trait::async_trait;
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use reqwest::Client;
 use uuid::Uuid;
 
@@ -158,6 +158,14 @@ impl OpenCodeGoProvider {
             ));
         }
 
+        if let Some(renews_at) = Self::extract_renewal(text) {
+            snap = snap.with_extra_rate_window(
+                "renewal",
+                "Renews",
+                RateWindow::with_details(0.0, None, Some(renews_at), None),
+            );
+        }
+
         Ok(snap)
     }
 
@@ -188,6 +196,40 @@ impl OpenCodeGoProvider {
     fn extract_number(pattern: &str, text: &str) -> Option<f64> {
         let re = regex_lite::Regex::new(pattern).ok()?;
         re.captures(text)?.get(1)?.as_str().parse().ok()
+    }
+
+    fn extract_renewal(text: &str) -> Option<DateTime<Utc>> {
+        let re = regex_lite::Regex::new(
+            r#"(?:"renewAt"|"renew_at"|renewAt|renew_at)\s*[:=]\s*"?([^",}\s]+)"?"#,
+        )
+        .ok()?;
+        let raw = re.captures(text)?.get(1)?.as_str();
+        Self::date_from_text(raw)
+    }
+
+    fn date_from_text(raw: &str) -> Option<DateTime<Utc>> {
+        let text = raw.trim();
+        if text.is_empty() {
+            return None;
+        }
+        if let Ok(number) = text.parse::<f64>() {
+            return Self::date_from_timestamp(number);
+        }
+        DateTime::parse_from_rfc3339(text)
+            .ok()
+            .map(|dt| dt.with_timezone(&Utc))
+    }
+
+    fn date_from_timestamp(number: f64) -> Option<DateTime<Utc>> {
+        if !number.is_finite() || number <= 0.0 {
+            return None;
+        }
+        let seconds = if number > 10_000_000_000.0 {
+            number / 1000.0
+        } else {
+            number
+        };
+        DateTime::<Utc>::from_timestamp(seconds as i64, 0)
     }
 
     fn parse_workspace_ids(text: &str) -> Vec<String> {
@@ -391,5 +433,25 @@ mod tests {
         assert!((secondary.used_percent - 13.0).abs() < 0.001);
         let tertiary = snap.tertiary.expect("monthly");
         assert!((tertiary.used_percent - 7.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn parses_renewal_window() {
+        let text = r#"
+            rollingUsage: { usagePercent: 42.5, resetInSec: 3600 }
+            weeklyUsage: { usagePercent: 50, resetInSec: 86400 }
+            renewAt: "2026-06-01T12:00:00Z"
+        "#;
+        let snap = OpenCodeGoProvider::parse_usage_text(text).unwrap();
+        let renewal = snap
+            .extra_rate_windows
+            .iter()
+            .find(|window| window.id == "renewal")
+            .expect("renewal window");
+        assert_eq!(renewal.title, "Renews");
+        assert_eq!(
+            renewal.window.resets_at.unwrap().to_rfc3339(),
+            "2026-06-01T12:00:00+00:00"
+        );
     }
 }

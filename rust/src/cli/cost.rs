@@ -159,6 +159,21 @@ fn print_text_output(results: &[CostResult], use_color: bool, days: u32) {
                     println!("    {}: ${:.2}", model, cost);
                 }
             }
+
+            if !result.summary.by_speed.is_empty() {
+                println!("  Codex speed:");
+                for bucket in ["standard", "fast"] {
+                    if let Some(cost) = result.summary.by_speed.get(bucket) {
+                        let tokens = result
+                            .summary
+                            .by_speed_tokens
+                            .get(bucket)
+                            .map(|counts| format_number(counts.total()))
+                            .unwrap_or_else(|| "0".to_string());
+                        println!("    {}: ${:.2} ({} tokens)", bucket, cost, tokens);
+                    }
+                }
+            }
         }
 
         if i < results.len() - 1 {
@@ -194,6 +209,15 @@ fn print_json_output(results: &[CostResult], pretty: bool, days: u32) -> anyhow:
                     },
                     "sessions_count": r.summary.sessions_count,
                     "by_model": r.summary.by_model,
+                    "by_speed": r.summary.by_speed,
+                    "by_speed_tokens": r.summary.by_speed_tokens.iter().map(|(bucket, counts)| {
+                        (bucket.clone(), serde_json::json!({
+                            "input": counts.input_tokens,
+                            "output": counts.output_tokens,
+                            "cached": counts.cached_tokens,
+                            "total": counts.total()
+                        }))
+                    }).collect::<serde_json::Map<_, _>>(),
                     "period": {
                         "start": r.summary.period_start.map(|d| d.to_string()),
                         "end": r.summary.period_end.map(|d| d.to_string())

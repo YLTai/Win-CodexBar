@@ -105,6 +105,7 @@ const RAW: Record<string, string> = {
  */
 export const PROVIDER_ICON_REGISTRY: Record<string, ProviderIcon> = {
   alibaba:     { id: "alibaba",     brandColor: "#ff6a00", fallbackLetter: "阿", svgPath: RAW.alibaba },
+  alibabatokenplan: { id: "alibabatokenplan", brandColor: "#ff6a00", fallbackLetter: "阿", svgPath: RAW.alibaba },
   amp:         { id: "amp",         brandColor: "#dc2626", fallbackLetter: "⚡", svgPath: RAW.amp },
   antigravity: { id: "antigravity", brandColor: "#60ba7e", fallbackLetter: "◉", svgPath: RAW.antigravity },
   augment:     { id: "augment",     brandColor: "#6366f1", fallbackLetter: "A", svgPath: RAW.augment },
@@ -164,6 +165,10 @@ const ALIASES: Record<string, string> = {
   tongyi: "alibaba",
   qwen: "alibaba",
   qianwen: "alibaba",
+  "alibaba token plan": "alibabatokenplan",
+  "alibaba-token-plan": "alibabatokenplan",
+  "alibaba-token": "alibabatokenplan",
+  "bailian-token-plan": "alibabatokenplan",
   "open router": "openrouter",
   "aws bedrock": "bedrock",
   "aws-bedrock": "bedrock",

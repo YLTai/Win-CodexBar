@@ -26,6 +26,10 @@ pub struct CostSummary {
     pub by_model: HashMap<String, f64>,
     /// Token breakdown by model
     pub by_model_tokens: HashMap<String, ModelTokenCounts>,
+    /// Codex cost split by speed/tier when local logs expose it.
+    pub by_speed: HashMap<String, f64>,
+    /// Codex token split by speed/tier when local logs expose it.
+    pub by_speed_tokens: HashMap<String, ModelTokenCounts>,
     /// Period start date
     pub period_start: Option<NaiveDate>,
     /// Period end date
@@ -49,6 +53,19 @@ impl ModelTokenCounts {
 impl CostSummary {
     pub fn format_total(&self) -> String {
         format!("${:.2}", self.total_cost_usd)
+    }
+}
+
+fn codex_speed_bucket(model: &str) -> &'static str {
+    let normalized = model.to_ascii_lowercase();
+    if normalized.contains("fast")
+        || normalized.contains("priority")
+        || normalized.contains("spark")
+        || normalized.contains("smoke")
+    {
+        "fast"
+    } else {
+        "standard"
     }
 }
 
@@ -290,6 +307,11 @@ impl CostScanner {
                     has_tokens = true;
 
                     *summary.by_model.entry(current_model.clone()).or_insert(0.0) += cost;
+                    let speed_bucket = codex_speed_bucket(&current_model);
+                    *summary
+                        .by_speed
+                        .entry(speed_bucket.to_string())
+                        .or_insert(0.0) += cost;
 
                     let model_tokens = summary
                         .by_model_tokens
@@ -298,6 +320,14 @@ impl CostScanner {
                     model_tokens.input_tokens += input;
                     model_tokens.output_tokens += output;
                     model_tokens.cached_tokens += cached;
+
+                    let speed_tokens = summary
+                        .by_speed_tokens
+                        .entry(speed_bucket.to_string())
+                        .or_default();
+                    speed_tokens.input_tokens += input;
+                    speed_tokens.output_tokens += output;
+                    speed_tokens.cached_tokens += cached;
                 }
             }
         }
@@ -528,5 +558,12 @@ mod tests {
         // Test Sonnet pricing: $3/1M input, $15/1M output
         let cost = ClaudePricing::cost_usd("claude-3-5-sonnet", 1_000_000, 0, 0, 1_000_000);
         assert!((cost - 18.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_codex_speed_bucket() {
+        assert_eq!(codex_speed_bucket("gpt-5.5-fast"), "fast");
+        assert_eq!(codex_speed_bucket("gpt-5.3-codex-spark"), "fast");
+        assert_eq!(codex_speed_bucket("gpt-5-codex"), "standard");
     }
 }

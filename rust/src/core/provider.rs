@@ -35,6 +35,7 @@ pub enum ProviderId {
     Synthetic,
     JetBrains,
     Alibaba,
+    AlibabaTokenPlan,
     NanoGPT,
     Infini,
     Perplexity,
@@ -89,6 +90,7 @@ impl ProviderId {
             ProviderId::Synthetic,
             ProviderId::JetBrains,
             ProviderId::Alibaba,
+            ProviderId::AlibabaTokenPlan,
             ProviderId::NanoGPT,
             ProviderId::Infini,
             ProviderId::Perplexity,
@@ -143,6 +145,7 @@ impl ProviderId {
             ProviderId::Synthetic => "synthetic",
             ProviderId::JetBrains => "jetbrains",
             ProviderId::Alibaba => "alibaba",
+            ProviderId::AlibabaTokenPlan => "alibabatokenplan",
             ProviderId::NanoGPT => "nanogpt",
             ProviderId::Infini => "infini",
             ProviderId::Perplexity => "perplexity",
@@ -197,6 +200,7 @@ impl ProviderId {
             ProviderId::Synthetic => "Synthetic",
             ProviderId::JetBrains => "JetBrains AI",
             ProviderId::Alibaba => "Alibaba",
+            ProviderId::AlibabaTokenPlan => "Alibaba Token Plan",
             ProviderId::NanoGPT => "NanoGPT",
             ProviderId::Infini => "Infini",
             ProviderId::Perplexity => "Perplexity",
@@ -243,6 +247,7 @@ impl ProviderId {
             ProviderId::Amp => Some("sourcegraph.com"),
             ProviderId::Antigravity => Some("antigravity.ai"),
             ProviderId::Alibaba => Some("tongyi.aliyun.com"),
+            ProviderId::AlibabaTokenPlan => Some("bailian.console.aliyun.com"),
             ProviderId::Ollama => Some("ollama.com"),
             ProviderId::T3Chat => Some("t3.chat"),
             ProviderId::Perplexity => Some("perplexity.ai"),
@@ -310,6 +315,8 @@ impl ProviderId {
                 Some(ProviderId::JetBrains)
             }
             "alibaba" | "tongyi" | "qianwen" | "qwen" => Some(ProviderId::Alibaba),
+            "alibabatokenplan" | "alibaba-token-plan" | "alibaba token plan" | "alibaba-token"
+            | "bailian-token-plan" => Some(ProviderId::AlibabaTokenPlan),
             "nanogpt" | "nano-gpt" => Some(ProviderId::NanoGPT),
             "infini" | "infini-ai" => Some(ProviderId::Infini),
             "perplexity" | "pplx" => Some(ProviderId::Perplexity),
@@ -553,7 +560,7 @@ mod tests {
     #[test]
     fn test_provider_id_all() {
         let all = ProviderId::all();
-        assert_eq!(all.len(), 48);
+        assert_eq!(all.len(), 49);
         assert!(all.contains(&ProviderId::Claude));
         assert!(all.contains(&ProviderId::Codex));
         assert!(all.contains(&ProviderId::Kimi));
@@ -563,6 +570,7 @@ mod tests {
         assert!(all.contains(&ProviderId::T3Chat));
         assert!(all.contains(&ProviderId::Synthetic));
         assert!(all.contains(&ProviderId::JetBrains));
+        assert!(all.contains(&ProviderId::AlibabaTokenPlan));
         assert!(all.contains(&ProviderId::NanoGPT));
         assert!(all.contains(&ProviderId::Infini));
         assert!(all.contains(&ProviderId::Bedrock));

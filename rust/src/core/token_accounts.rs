@@ -93,6 +93,14 @@ impl TokenAccountSupport {
                 requires_manual_cookie_source: true,
                 cookie_name: None,
             }),
+            ProviderId::AlibabaTokenPlan => Some(TokenAccountSupport {
+                title: "Session tokens",
+                subtitle: "Store multiple Alibaba Token Plan Cookie headers.",
+                placeholder: "Cookie: cna=...; login_aliyunid_csrf=...",
+                injection: TokenInjection::CookieHeader,
+                requires_manual_cookie_source: true,
+                cookie_name: None,
+            }),
             ProviderId::MiniMax => Some(TokenAccountSupport {
                 title: "Session tokens",
                 subtitle: "Store multiple MiniMax Cookie headers.",
