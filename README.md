@@ -67,11 +67,13 @@ The installer includes the desktop app, Microsoft's Evergreen WebView2 bootstrap
 
 ## Fast Windows Release Builds
 
-For local release builds on a Windows server, use the cached release builder:
+For local release builds on a Windows machine, use the cached release builder:
 
 ```powershell
 .\scripts\windows-release-build.ps1 -Ref v0.29.0
 ```
+
+Automated Windows release builds now run through CircleCI hosted Windows instead of GitHub Actions or AWS EC2. Cloudflare R2 can mirror verified artifacts after the Windows smoke install passes. See [docs/release/ci-cd.md](docs/release/ci-cd.md).
 
 The script keeps a clean managed checkout under `C:\code\Win-CodexBar-release\source`, stores Rust build output in `C:\code\Win-CodexBar-release\cache\cargo-target`, stores pnpm packages in `C:\code\Win-CodexBar-release\cache\pnpm-store`, and reuses signed WebView2/VC++ bootstrapper downloads. It still builds the real release binary, verifies Microsoft signatures for installer dependencies, packages with Inno Setup, and writes the same four GitHub release assets under `C:\code\Win-CodexBar-release\assets`.
 
@@ -85,7 +87,7 @@ Useful release flags:
 .\scripts\release-doctor.ps1 -Version 0.29.0
 ```
 
-GitHub Actions are best-effort only for this project. The Windows server script is the primary release path for installer and portable artifacts.
+GitHub Actions are manual best-effort only for this project. CircleCI hosted Windows is the primary automated release path for installer and portable artifacts.
 
 ## First Run
 
