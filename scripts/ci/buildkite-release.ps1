@@ -2,6 +2,10 @@
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+trap {
+    Write-Error $_
+    exit 1
+}
 
 if (-not $env:BUILDKITE_TAG) {
     throw "Buildkite release builds require BUILDKITE_TAG, for example v0.30.0."

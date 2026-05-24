@@ -135,6 +135,7 @@ function Get-ObjdumpImportsWebView2Loader {
 $git = Require-Command "git"
 $cargo = Require-Command "cargo"
 $pnpm = Require-Command "pnpm"
+$rustup = Get-Command rustup -ErrorAction SilentlyContinue
 
 New-Item -ItemType Directory -Force $WorkRoot, $CacheDir, $DesktopCargoTargetDir, $CliCargoTargetDir, $PnpmStoreDir, $InstallerDepsDir, $AssetsDir | Out-Null
 
@@ -161,6 +162,9 @@ try {
         [System.Runtime.InteropServices.OSPlatform]::Windows
     )) {
         $env:CARGO_BUILD_TARGET = "x86_64-pc-windows-msvc"
+    }
+    if ($env:CARGO_BUILD_TARGET -and $rustup) {
+        Invoke-Native $rustup.Source @("target", "add", $env:CARGO_BUILD_TARGET)
     }
     $env:PNPM_HOME = if ($env:PNPM_HOME) { $env:PNPM_HOME } else { Join-Path $CacheDir "pnpm-home" }
 
@@ -196,8 +200,13 @@ try {
         "--no-bundle"
     )
 
-    $sourceExe = Join-Path $DesktopCargoTargetDir "release\codexbar-desktop-tauri.exe"
-    $releaseExe = Join-Path $DesktopCargoTargetDir "release\codexbar.exe"
+    $releaseBinDir = if ($env:CARGO_BUILD_TARGET) {
+        Join-Path $DesktopCargoTargetDir "$($env:CARGO_BUILD_TARGET)\release"
+    } else {
+        Join-Path $DesktopCargoTargetDir "release"
+    }
+    $sourceExe = Join-Path $releaseBinDir "codexbar-desktop-tauri.exe"
+    $releaseExe = Join-Path $releaseBinDir "codexbar.exe"
     if (-not (Test-Path $sourceExe)) {
         throw "Missing expected Tauri binary: $sourceExe"
     }
@@ -239,7 +248,7 @@ try {
         Invoke-Native $iscc @(
             "/Qp",
             "/DAppVersion=$version",
-            "/DTargetBinDir=$($DesktopCargoTargetDir)\release",
+            "/DTargetBinDir=$releaseBinDir",
             "/DVCRedistPath=$vcRedistPath",
             "/DWebView2BootstrapperPath=$webView2BootstrapperPath",
             "/DOutputDir=$installerOut",

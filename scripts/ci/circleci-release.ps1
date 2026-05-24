@@ -7,6 +7,10 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+trap {
+    Write-Error $_
+    exit 1
+}
 
 $RepoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $WorkRoot = "C:\code\Win-CodexBar-release"
