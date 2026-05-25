@@ -191,6 +191,28 @@ function Install-RustToolchain {
         return
     }
 
+    Write-Host "Installing rustup through Chocolatey with a bounded wait..."
+    $chocoArgs = @("install", "rustup.install", "--version=1.27.1", "-y", "--no-progress")
+    $chocoProcess = Start-Process `
+        -FilePath "choco.exe" `
+        -ArgumentList $chocoArgs `
+        -NoNewWindow `
+        -PassThru
+
+    if (-not $chocoProcess.WaitForExit(120000)) {
+        Write-Host "Chocolatey rustup wrapper exceeded 120s; stopping wrapper and checking installed toolchain..."
+        Stop-Process -Id $chocoProcess.Id -Force -ErrorAction SilentlyContinue
+    } elseif ($chocoProcess.ExitCode -ne 0) {
+        throw "rustup.install failed with exit code $($chocoProcess.ExitCode)"
+    }
+
+    Add-RustPath
+    if ((Test-Command "cargo") -and (Test-Command "rustc")) {
+        Write-Host "Rust toolchain installed through rustup."
+        return
+    }
+
+    Write-Host "rustup.install did not expose cargo/rustc; using direct Rust archives fallback..."
     if (Test-Path $rustRoot) {
         Write-Host "Removing incomplete cached Rust toolchain at $rustRoot..."
         Remove-Item -Recurse -Force $rustRoot
