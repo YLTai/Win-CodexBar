@@ -157,32 +157,30 @@ function Install-RustToolchain {
         return
     }
 
-    Write-Host "Installing Rust MSVC through Chocolatey rust-ms..."
-    $rustJob = Start-Job -ScriptBlock {
-        param([string]$Version)
-        choco install rust-ms --version=$Version -y --no-progress --limit-output
-        if ($LASTEXITCODE -ne 0) {
-            throw "rust-ms install failed with exit code $LASTEXITCODE"
-        }
-    } -ArgumentList $rustVersion
-
-    if (Wait-Job -Job $rustJob -Timeout 180) {
-        Receive-Job -Job $rustJob
-        if ($rustJob.State -ne "Completed") {
-            throw "rust-ms install job ended with state $($rustJob.State)"
-        }
-    } else {
-        Write-Host "rust-ms install exceeded 180s; stopping wrapper and checking installed shims..."
-        Stop-Job -Job $rustJob
-        Receive-Job -Job $rustJob -ErrorAction SilentlyContinue
+    Write-Host "Installing minimal Rust MSVC toolchain from verified upstream archives..."
+    if (Test-Path $rustRoot) {
+        Write-Host "Removing incomplete cached Rust toolchain at $rustRoot..."
+        Remove-Item -Recurse -Force $rustRoot
     }
-    Remove-Job -Job $rustJob -Force
+    New-Item -ItemType Directory -Force $rustRoot | Out-Null
 
-    $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" +
-        [System.Environment]::GetEnvironmentVariable("Path", "User")
+    $baseUrl = "https://static.rust-lang.org/dist/$rustDistDate"
+    Install-RustArchive `
+        -Name "rustc-$rustVersion-$rustHost" `
+        -Url "$baseUrl/rustc-$rustVersion-$rustHost.tar.gz" `
+        -Checksum "b1101cba184fda0da47658772d04423fdb86cc9ed888cac3b29d0e9f55faec53"
+    Install-RustArchive `
+        -Name "cargo-$rustVersion-$rustHost" `
+        -Url "$baseUrl/cargo-$rustVersion-$rustHost.tar.gz" `
+        -Checksum "2d68113a00b98f0dec6d0e8473f82e08cec00c392115933a57dbfe9d3c8b2d8c"
+    Install-RustArchive `
+        -Name "rust-std-$rustVersion-$rustHost" `
+        -Url "$baseUrl/rust-std-$rustVersion-$rustHost.tar.gz" `
+        -Checksum "aa56f95b4817f562c0ada0abee3511a802a948303404e8fc872d0371ae0693fc"
+
     Add-RustPath
     if (-not ((Test-Command "cargo") -and (Test-Command "rustc"))) {
-        throw "Missing cargo/rustc after rust-ms install."
+        throw "Missing cargo/rustc after Rust archive install."
     }
 }
 
