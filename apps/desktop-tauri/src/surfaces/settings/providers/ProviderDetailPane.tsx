@@ -260,9 +260,11 @@ export function ProviderDetailPane({
       <IdentitySection provider={detail} subtitle={subtitle} t={t} />
 
       {detail.lastError && (
-        <div className="provider-detail-error">
-          {t("ProviderLastFetchFailed")}: {detail.lastError}
-        </div>
+        <ProviderIssueNotice
+          detail={detail}
+          message={detail.lastError}
+          onCopy={handleCopyError}
+        />
       )}
 
       <UsageSection
@@ -334,6 +336,46 @@ export function ProviderDetailPane({
         onBuyCredits={handleBuyCredits}
         t={t}
       />
+    </div>
+  );
+}
+
+function ProviderIssueNotice({
+  detail,
+  message,
+  onCopy,
+}: {
+  detail: ProviderDetail;
+  message: string;
+  onCopy: () => void;
+}) {
+  const cleaned = message.replace(/^last fetch failed:\s*/i, "").trim();
+  const lower = cleaned.toLowerCase();
+  const needsLogin =
+    lower.includes("auth.json not found") ||
+    lower.includes("not signed in") ||
+    lower.includes("credentials not found") ||
+    lower.includes("oauth credentials not found") ||
+    lower.includes("run `") ||
+    lower.includes("run codex") ||
+    lower.includes("run claude");
+  const title = needsLogin
+    ? `${detail.displayName} needs sign-in`
+    : "Provider fetch needs attention";
+
+  return (
+    <div className="provider-detail-error" role="status">
+      <div className="provider-detail-error__header">
+        <strong>{title}</strong>
+        <button
+          type="button"
+          className="provider-detail-error__copy"
+          onClick={onCopy}
+        >
+          Copy
+        </button>
+      </div>
+      <p>{cleaned}</p>
     </div>
   );
 }

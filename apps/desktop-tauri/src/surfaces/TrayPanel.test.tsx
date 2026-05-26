@@ -259,6 +259,10 @@ describe("TrayPanel provider grid", () => {
 
     const grid = container.querySelector(".provider-grid");
     expect(grid?.classList.contains("provider-grid--sparse")).toBe(false);
+    expect(grid?.classList.contains("provider-grid--compact")).toBe(true);
+    expect(grid?.getAttribute("data-provider-count")).toBe(
+      String(providers.length + 1),
+    );
     expect(container.querySelectorAll(".menu-stack__item")).toHaveLength(
       providers.length,
     );
@@ -268,6 +272,27 @@ describe("TrayPanel provider grid", () => {
         id,
       ).not.toBeNull();
     }
+  });
+
+  it("uses compact provider labels for huge catalogs without losing full titles", async () => {
+    const providers = TEST_PROVIDER_CATALOG.slice(0, 36).map(
+      ([id, displayName], index) => provider(id, displayName, (index * 7) % 100),
+    );
+
+    const { container } = renderTrayPanel(providers);
+
+    await waitFor(() => {
+      expect(container.querySelector(".provider-grid--compact")).not.toBeNull();
+    });
+
+    const copilot = container.querySelector(
+      '.provider-grid__item[title="Copilot"]',
+    );
+    expect(copilot).not.toBeNull();
+    expect(copilot?.getAttribute("aria-label")).toBe("Copilot");
+    expect(copilot?.querySelector(".provider-grid__label")?.textContent).toBe(
+      "Copi",
+    );
   });
 
   it("provider grid indicator follows the show-as-used setting", async () => {
