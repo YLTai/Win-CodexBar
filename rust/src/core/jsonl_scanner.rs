@@ -123,28 +123,28 @@ impl CodexParserState {
         let Ok(obj) = serde_json::from_str::<Value>(line) else {
             return;
         };
-        let Some(msg_type) = obj.get("type").and_then(|v| v.as_str()) else {
-            return;
-        };
         let Some(day_key) = codex_line_day_key(&obj, range) else {
             return;
         };
 
-        match msg_type {
-            "turn_context" => self.update_current_model(&obj),
-            "event_msg" => self.record_token_count(&obj, day_key),
-            _ => {}
+        if obj.get("type").and_then(|v| v.as_str()) == Some("turn_context") {
+            self.update_current_model(&obj);
+        }
+
+        if token_count_payload(&obj).is_some() {
+            self.record_token_count(&obj, day_key);
         }
     }
 
     fn update_current_model(&mut self, obj: &Value) {
-        let Some(payload) = obj.get("payload") else {
-            return;
-        };
-
-        if let Some(model) = payload
+        if let Some(model) = obj
             .get("model")
-            .or_else(|| payload.get("info").and_then(|info| info.get("model")))
+            .or_else(|| obj.get("payload").and_then(|payload| payload.get("model")))
+            .or_else(|| {
+                obj.get("payload")
+                    .and_then(|payload| payload.get("info"))
+                    .and_then(|info| info.get("model"))
+            })
             .and_then(|v| v.as_str())
         {
             self.current_model = Some(model.to_string());
@@ -155,14 +155,14 @@ impl CodexParserState {
         let Some(payload) = token_count_payload(obj) else {
             return;
         };
-        let info = payload.get("info");
-        let Some((delta_input, delta_cached, delta_output)) = self.token_deltas(info) else {
+        let Some((delta_input, delta_cached, delta_output)) = self.token_deltas(payload) else {
             return;
         };
         if delta_input == 0 && delta_cached == 0 && delta_output == 0 {
             return;
         }
 
+        let info = payload.get("info");
         let model = self.token_model(info, payload, obj);
         let norm_model = CostUsagePricing::normalize_codex_model(&model);
         let packed = self
@@ -187,13 +187,22 @@ impl CodexParserState {
             .unwrap_or_else(|| "gpt-5".to_string())
     }
 
-    fn token_deltas(&mut self, info: Option<&Value>) -> Option<(i32, i32, i32)> {
+    fn token_deltas(&mut self, payload: &Value) -> Option<(i32, i32, i32)> {
+        let info = payload.get("info");
         if let Some(total) = info.and_then(|i| i.get("total_token_usage")) {
             return Some(self.total_usage_delta(total));
         }
 
-        info.and_then(|i| i.get("last_token_usage"))
-            .map(last_usage_delta)
+        if let Some(last) = info.and_then(|i| i.get("last_token_usage")) {
+            return Some(last_usage_delta(last));
+        }
+
+        let direct = read_token_totals(payload);
+        (direct.input != 0 || direct.cached != 0 || direct.output != 0).then_some((
+            direct.input.max(0),
+            direct.cached.max(0),
+            direct.output.max(0),
+        ))
     }
 
     fn total_usage_delta(&mut self, total: &Value) -> (i32, i32, i32) {
@@ -209,7 +218,10 @@ impl CodexParserState {
 }
 
 fn is_candidate_codex_line(line: &str) -> bool {
-    if !line.contains("\"type\":\"event_msg\"") && !line.contains("\"type\":\"turn_context\"") {
+    if !line.contains("\"type\":\"event_msg\"")
+        && !line.contains("\"type\":\"turn_context\"")
+        && !line.contains("\"event_msg\"")
+    {
         return false;
     }
 
@@ -225,8 +237,14 @@ fn codex_line_day_key(obj: &Value, range: &CostUsageDayRange) -> Option<String> 
 }
 
 fn token_count_payload(obj: &Value) -> Option<&Value> {
-    let payload = obj.get("payload")?;
-    (payload.get("type").and_then(|v| v.as_str()) == Some("token_count")).then_some(payload)
+    if let Some(payload) = obj.get("payload")
+        && payload.get("type").and_then(|v| v.as_str()) == Some("token_count")
+    {
+        return Some(payload);
+    }
+
+    let event_msg = obj.get("event_msg")?;
+    (event_msg.get("type").and_then(|v| v.as_str()) == Some("token_count")).then_some(event_msg)
 }
 
 fn read_token_totals(value: &Value) -> CodexTotals {

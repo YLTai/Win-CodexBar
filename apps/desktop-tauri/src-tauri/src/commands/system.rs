@@ -264,10 +264,17 @@ pub fn quit_app(app: tauri::AppHandle) {
 }
 
 fn dashboard_url_for_provider(provider_id: &str) -> Option<String> {
-    codexbar::settings::get_api_key_providers()
+    if let Some(url) = codexbar::settings::get_api_key_providers()
         .into_iter()
         .find(|p| p.id.cli_name() == provider_id)
         .and_then(|p| p.dashboard_url.map(|s| s.to_string()))
+    {
+        return Some(url);
+    }
+
+    let id = ProviderId::from_cli_name(provider_id)?;
+    let provider = instantiate_provider(id);
+    provider.metadata().dashboard_url.map(|s| s.to_string())
 }
 
 fn status_page_url_for_provider(provider_id: &str) -> Option<String> {
@@ -376,4 +383,17 @@ async fn run_copilot_device_login(app: &tauri::AppHandle) -> Result<(), String> 
         serde_json::json!({ "providerId": "copilot" }),
     );
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dashboard_url_resolves_from_codex_provider_metadata() {
+        assert_eq!(
+            dashboard_url_for_provider("codex").as_deref(),
+            Some("https://chatgpt.com/codex/settings/usage")
+        );
+    }
 }

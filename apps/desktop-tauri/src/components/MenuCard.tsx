@@ -48,6 +48,7 @@ interface MenuCardProps {
   resetTimeRelative: boolean;
   showAsUsed?: boolean;
   compactMetrics?: boolean;
+  onLayoutChange?: () => void;
 }
 
 function maskEmail(email: string): string {
@@ -316,6 +317,7 @@ export default function MenuCard({
   resetTimeRelative,
   showAsUsed = false,
   compactMetrics = false,
+  onLayoutChange,
 }: MenuCardProps) {
   const { t } = useLocale();
   const [chartData, setChartData] = useState<ProviderChartData | null>(null);
@@ -337,7 +339,10 @@ export default function MenuCard({
       provider.accountEmail ?? undefined,
     )
       .then((data) => {
-        if (!cancelled) setChartData(data);
+        if (!cancelled) {
+          setChartData(data);
+          requestAnimationFrame(() => onLayoutChange?.());
+        }
       })
       .catch(() => {
         /* chart data is best-effort */
@@ -345,7 +350,7 @@ export default function MenuCard({
     return () => {
       cancelled = true;
     };
-  }, [provider.providerId, provider.accountEmail]);
+  }, [provider.providerId, provider.accountEmail, onLayoutChange]);
 
   const email = provider.accountEmail
     ? hideEmail

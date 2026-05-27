@@ -144,7 +144,7 @@ fn scan_local_cost(provider_id: &str, days: u32) -> Option<CostSummary> {
 }
 
 fn total_tokens(summary: &CostSummary) -> u64 {
-    summary.input_tokens + summary.output_tokens + summary.cached_tokens
+    summary.input_tokens + summary.output_tokens
 }
 
 fn non_zero_f64(value: f64) -> Option<f64> {

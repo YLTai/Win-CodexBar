@@ -95,8 +95,10 @@ export default function TrayPanel({ state }: { state: BootstrapState }) {
   // Hide panel during the initial resize+reposition dance so the user
   // doesn't see the window jump around.  Revealed after first layout pass.
   const [layoutReady, setLayoutReady] = useState(false);
+  const [layoutRevision, setLayoutRevision] = useState(0);
   const layoutReadyRef = useRef(false);
   const resizeRunRef = useRef(0);
+  const layoutTimerRef = useRef<number | undefined>(undefined);
 
   // Cards to display based on mode
   // Overview: all providers in the grid — non-error first, then errors
@@ -125,6 +127,23 @@ export default function TrayPanel({ state }: { state: BootstrapState }) {
     }
     return [match];
   }, [sorted, selectedProviderId, gridExpanded]);
+
+  const handleMenuCardLayoutChange = useCallback(() => {
+    if (layoutTimerRef.current !== undefined) {
+      window.clearTimeout(layoutTimerRef.current);
+    }
+    layoutTimerRef.current = window.setTimeout(() => {
+      setLayoutRevision((current) => current + 1);
+    }, 50);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (layoutTimerRef.current !== undefined) {
+        window.clearTimeout(layoutTimerRef.current);
+      }
+    };
+  }, []);
 
   // Dynamically size the Tauri window to fit content, capped at 800px.
   // The first pass can grow the hidden window for a complete measurement.
@@ -249,7 +268,7 @@ export default function TrayPanel({ state }: { state: BootstrapState }) {
       clearTimeout(t0);
       resizeRunRef.current += 1;
     };
-  }, [visibleProviders, providers]);
+  }, [visibleProviders, providers, layoutRevision]);
 
   const openSettings = useCallback(() => {
     void openSettingsWindow("general").finally(() => {
@@ -375,6 +394,7 @@ export default function TrayPanel({ state }: { state: BootstrapState }) {
                   resetTimeRelative={settings.resetTimeRelative}
                   showAsUsed={settings.showAsUsed}
                   compactMetrics={selectedProviderId === null}
+                  onLayoutChange={handleMenuCardLayoutChange}
                 />
               </div>
             </Fragment>

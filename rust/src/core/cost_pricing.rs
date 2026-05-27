@@ -551,19 +551,19 @@ impl CostUsagePricing {
     /// Calculate cost for Codex usage in USD
     pub fn codex_cost_usd(
         model: &str,
-        input_tokens: i32,
-        cached_input_tokens: i32,
-        output_tokens: i32,
+        input_tokens: u64,
+        cached_input_tokens: u64,
+        output_tokens: u64,
     ) -> Option<f64> {
         let key = Self::normalize_codex_model(model);
         let pricing = CODEX_PRICING.get(key.as_str())?;
 
-        let cached = cached_input_tokens.max(0).min(input_tokens.max(0));
-        let non_cached = (input_tokens.max(0) - cached).max(0);
+        let cached = cached_input_tokens.min(input_tokens);
+        let non_cached = input_tokens.saturating_sub(cached);
 
         let cost = (non_cached as f64) * pricing.input_cost_per_token
             + (cached as f64) * pricing.cache_read_input_cost_per_token
-            + (output_tokens.max(0) as f64) * pricing.output_cost_per_token;
+            + (output_tokens as f64) * pricing.output_cost_per_token;
 
         Some(cost)
     }
