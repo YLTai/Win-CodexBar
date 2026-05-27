@@ -3367,12 +3367,16 @@ html:has(.menu-surface--tray) {
 .menu-surface--tray .menu-card__content > .menu-card__divider:has(+ .menu-card__pace) {
   display: none;
 }
-/* Hide charts in tray — macOS shows charts only in the detail/dashboard view */
-.menu-surface--tray .menu-card__charts {
+/* Hide large charts in tray; keep the compact local token/cost summary visible. */
+.menu-surface--tray .menu-card__charts,
+.menu-surface--tray .menu-card__local-chart {
   display: none;
 }
-.menu-surface--tray .menu-card__local-usage {
-  display: none;
+.menu-surface--tray .menu-card__local-grid {
+  gap: 8px 18px;
+}
+.menu-surface--tray .menu-card__local-note {
+  font-size: 10px;
 }
 /* Hide cost section in tray — macOS compact popover only shows usage metrics */
 .menu-surface--tray .menu-card__cost,

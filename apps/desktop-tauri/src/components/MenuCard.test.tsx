@@ -1,4 +1,6 @@
 import { render, screen, waitFor } from "@testing-library/react";
+// @ts-expect-error Vitest runs this test in Node; the app tsconfig omits Node types.
+import { readFileSync } from "node:fs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const tauriMocks = vi.hoisted(() => ({
@@ -119,5 +121,16 @@ describe("MenuCard", () => {
 
     const fill = document.querySelector<HTMLElement>(".menu-metric__bar-fill");
     expect(fill?.style.width).toBe("35%");
+  });
+
+  it("keeps local token and cost totals visible in the tray panel", () => {
+    const styles = readFileSync("src/styles.css", "utf8");
+
+    expect(styles).not.toMatch(
+      /\.menu-surface--tray\s+\.menu-card__local-usage\s*\{[^}]*display:\s*none/s,
+    );
+    expect(styles).toMatch(
+      /\.menu-surface--tray\s+\.menu-card__local-chart\s*\{[^}]*display:\s*none/s,
+    );
   });
 });
