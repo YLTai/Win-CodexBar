@@ -116,6 +116,8 @@ fn main() {
             commands::set_provider_region,
             commands::get_provider_region,
             commands::get_provider_region_options,
+            commands::set_provider_workspace_id,
+            commands::get_provider_workspace_id,
             commands::get_gemini_cli_signed_in,
             commands::get_vertexai_status,
             commands::list_jetbrains_detected_ides,

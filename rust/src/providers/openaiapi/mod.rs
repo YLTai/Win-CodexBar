@@ -153,7 +153,11 @@ impl OpenAIApiProvider {
         Ok(result_from_grants(&decoded))
     }
 
-    async fn fetch_admin_usage(&self, api_key: &str) -> Result<ProviderFetchResult, ProviderError> {
+    async fn fetch_admin_usage(
+        &self,
+        api_key: &str,
+        project_id: Option<&str>,
+    ) -> Result<ProviderFetchResult, ProviderError> {
         let now = Utc::now();
         let start = (now.date_naive() - Duration::days(29))
             .and_hms_opt(0, 0, 0)
@@ -165,17 +169,19 @@ impl OpenAIApiProvider {
             .ok_or_else(|| ProviderError::Parse("Invalid OpenAI usage end date".to_string()))?
             .and_utc()
             .timestamp();
+        let project_id = clean_project_id(project_id);
 
         let costs: CostsResponse = self
             .fetch_admin_json(
                 OPENAI_ORG_COSTS_URL,
-                &[
+                &admin_query(
                     ("start_time", start.to_string()),
                     ("end_time", end.to_string()),
                     ("bucket_width", "1d".to_string()),
                     ("limit", "31".to_string()),
                     ("group_by", "line_item".to_string()),
-                ],
+                    project_id.as_deref(),
+                ),
                 api_key,
                 "costs",
             )
@@ -184,19 +190,25 @@ impl OpenAIApiProvider {
         let completions: CompletionsUsageResponse = self
             .fetch_admin_json(
                 OPENAI_ORG_COMPLETIONS_URL,
-                &[
+                &admin_query(
                     ("start_time", start.to_string()),
                     ("end_time", end.to_string()),
                     ("bucket_width", "1d".to_string()),
                     ("limit", "31".to_string()),
                     ("group_by", "model".to_string()),
-                ],
+                    project_id.as_deref(),
+                ),
                 api_key,
                 "completions",
             )
             .await?;
 
-        Ok(result_from_admin_usage(&costs, &completions, now))
+        Ok(result_from_admin_usage(
+            &costs,
+            &completions,
+            now,
+            project_id.as_deref(),
+        ))
     }
 
     async fn fetch_admin_json<T: serde::de::DeserializeOwned>(
@@ -277,6 +289,7 @@ fn result_from_admin_usage(
     costs: &CostsResponse,
     completions: &CompletionsUsageResponse,
     now: DateTime<Utc>,
+    project_id: Option<&str>,
 ) -> ProviderFetchResult {
     let cost_total: f64 = costs
         .data
@@ -365,7 +378,15 @@ fn result_from_admin_usage(
         "Tokens",
         RateWindow::with_details(0.0, None, None, Some(format!("{token_total} tokens"))),
     )
-    .with_login_method("Admin API");
+    .with_login_method(
+        project_id
+            .filter(|id| !id.is_empty())
+            .map(|id| format!("Admin API: {id}"))
+            .unwrap_or_else(|| "Admin API".to_string()),
+    );
+    if let Some(project_id) = project_id.filter(|id| !id.is_empty()) {
+        usage = usage.with_organization(format!("Project: {project_id}"));
+    }
     usage.updated_at = now;
 
     let mut top_models: Vec<_> = model_tokens.into_iter().collect();
@@ -393,6 +414,28 @@ fn result_from_admin_usage(
         "USD",
         "Last 30 days",
     ))
+}
+
+fn admin_query(
+    start: (&'static str, String),
+    end: (&'static str, String),
+    bucket_width: (&'static str, String),
+    limit: (&'static str, String),
+    group_by: (&'static str, String),
+    project_id: Option<&str>,
+) -> Vec<(&'static str, String)> {
+    let mut query = vec![start, end, bucket_width, limit, group_by];
+    if let Some(project_id) = clean_project_id(project_id) {
+        query.push(("project_ids", project_id));
+    }
+    query
+}
+
+fn clean_project_id(project_id: Option<&str>) -> Option<String> {
+    project_id
+        .map(str::trim)
+        .filter(|id| !id.is_empty())
+        .map(ToOwned::to_owned)
 }
 
 fn number_value(value: &serde_json::Value) -> Option<f64> {
@@ -423,7 +466,10 @@ impl Provider for OpenAIApiProvider {
         match ctx.source_mode {
             SourceMode::Auto | SourceMode::OAuth => {
                 let api_key = Self::api_key(ctx.api_key.as_deref())?;
-                match self.fetch_admin_usage(&api_key).await {
+                match self
+                    .fetch_admin_usage(&api_key, ctx.workspace_id.as_deref())
+                    .await
+                {
                     Ok(result) => Ok(result),
                     Err(admin_error) => match self.fetch_api(&api_key).await {
                         Ok(result) => Ok(ProviderFetchResult {
@@ -529,8 +575,16 @@ mod tests {
             }],
         };
         let now = Utc.timestamp_opt(1_797_724_800, 0).single().unwrap();
-        let result = result_from_admin_usage(&costs, &completions, now);
+        let result = result_from_admin_usage(&costs, &completions, now, Some("proj_demo"));
         assert_eq!(result.cost.unwrap().used, 12.5);
+        assert_eq!(
+            result.usage.account_organization.as_deref(),
+            Some("Project: proj_demo")
+        );
+        assert_eq!(
+            result.usage.login_method.as_deref(),
+            Some("Admin API: proj_demo")
+        );
         assert!(
             result.usage.extra_rate_windows.iter().any(|window| window
                 .window
@@ -538,5 +592,18 @@ mod tests {
                 .as_deref()
                 == Some("175 tokens"))
         );
+    }
+
+    #[test]
+    fn openai_admin_query_scopes_project_ids_when_configured() {
+        let query = admin_query(
+            ("start_time", "1".to_string()),
+            ("end_time", "2".to_string()),
+            ("bucket_width", "1d".to_string()),
+            ("limit", "31".to_string()),
+            ("group_by", "model".to_string()),
+            Some("  proj_123  "),
+        );
+        assert!(query.contains(&("project_ids", "proj_123".to_string())));
     }
 }

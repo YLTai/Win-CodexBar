@@ -305,6 +305,17 @@ export function setProviderRegion(providerId: string, region: string): Promise<v
   return invoke<void>("set_provider_region", { providerId, region });
 }
 
+export function getProviderWorkspaceId(providerId: string): Promise<string | null> {
+  return invoke<string | null>("get_provider_workspace_id", { providerId });
+}
+
+export function setProviderWorkspaceId(
+  providerId: string,
+  workspaceId: string,
+): Promise<void> {
+  return invoke<void>("set_provider_workspace_id", { providerId, workspaceId });
+}
+
 // ── Phase 6d — credential detection ──────────────────────────────────
 
 export function openPath(path: string): Promise<void> {

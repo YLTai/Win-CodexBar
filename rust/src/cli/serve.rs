@@ -79,6 +79,7 @@ async fn usage_response(provider: Option<&str>) -> String {
         verbose: false,
         manual_cookie_header: None,
         api_key: None,
+        workspace_id: None,
     };
 
     let mut results = Vec::new();

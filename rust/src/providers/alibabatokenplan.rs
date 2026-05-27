@@ -5,10 +5,9 @@
 //! a manually pasted cookie header.
 
 use async_trait::async_trait;
-use chrono::{DateTime, NaiveDateTime, TimeZone, Utc};
+use chrono::{DateTime, NaiveDate, NaiveDateTime, TimeZone, Utc};
 use regex_lite::Regex;
 use serde_json::Value;
-use uuid::Uuid;
 
 use crate::browser::cookies::get_cookie_header;
 use crate::core::{
@@ -16,10 +15,9 @@ use crate::core::{
     RateWindow, SourceMode, UsageSnapshot,
 };
 
-const GATEWAY_BASE_URL: &str = "https://bailian-cs.console.aliyun.com";
+const GATEWAY_BASE_URL: &str = "https://bailian.console.aliyun.com";
 const DASHBOARD_URL: &str =
     "https://bailian.console.aliyun.com/cn-beijing?tab=plan#/efm/subscription/token-plan";
-const API_NAME: &str = "zeldaEasy.bailian-commerce.tokenPlan.queryTokenPlanInstanceInfo";
 const TOKEN_PLAN_COMMODITY_CODE: &str = "sfm_tokenplanteams_dp_cn";
 const CURRENT_REGION_ID: &str = "cn-beijing";
 const USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36";
@@ -69,7 +67,18 @@ impl AlibabaTokenPlanProvider {
             .build()
             .map_err(|e| ProviderError::Other(e.to_string()))?;
         let sec_token = Self::resolve_sec_token(&client, &cookie_header, ctx).await;
-        let anonymous_id = cookie_value("cna", &cookie_header);
+        let mut form = vec![
+            ("product", "BssOpenAPI-V3".to_string()),
+            ("action", "GetSubscriptionSummary".to_string()),
+            ("params", Self::request_params()),
+            ("region", CURRENT_REGION_ID.to_string()),
+        ];
+        if let Some(token) = sec_token
+            .as_deref()
+            .filter(|token| !token.trim().is_empty())
+        {
+            form.push(("sec_token", token.to_string()));
+        }
         let mut request = client
             .post(Self::quota_url())
             .header("Cookie", &cookie_header)
@@ -79,13 +88,7 @@ impl AlibabaTokenPlanProvider {
             .header("Referer", DASHBOARD_URL)
             .header("User-Agent", USER_AGENT)
             .header("X-Requested-With", "XMLHttpRequest")
-            .form(&[
-                (
-                    "params",
-                    Self::request_params(sec_token.as_deref(), anonymous_id.as_deref()),
-                ),
-                ("region", CURRENT_REGION_ID.to_string()),
-            ]);
+            .form(&form);
 
         if let Some(csrf) = cookie_value("login_aliyunid_csrf", &cookie_header)
             .or_else(|| cookie_value("csrf", &cookie_header))
@@ -168,47 +171,15 @@ impl AlibabaTokenPlanProvider {
 
     fn quota_url() -> String {
         format!(
-            "{GATEWAY_BASE_URL}/data/api.json?action=BroadScopeAspnGateway&product=sfm_bailian&api={API_NAME}&_v=undefined"
+            "{GATEWAY_BASE_URL}/data/api.json?action=GetSubscriptionSummary&product=BssOpenAPI-V3&_tag="
         )
     }
 
-    fn request_params(sec_token: Option<&str>, anonymous_id: Option<&str>) -> String {
-        let trace_id = Uuid::new_v4().to_string().to_lowercase();
-        let mut cornerstone = serde_json::json!({
-            "feTraceId": trace_id,
-            "feURL": DASHBOARD_URL,
-            "protocol": "V2",
-            "console": "ONE_CONSOLE",
-            "productCode": "p_efm",
-            "domain": "bailian.console.aliyun.com",
-            "consoleSite": "BAILIAN_ALIYUN",
-            "userNickName": "",
-            "userPrincipalName": "",
-            "xsp_lang": "zh-CN"
-        });
-        if let Some(id) = anonymous_id.filter(|id| !id.trim().is_empty())
-            && let Some(map) = cornerstone.as_object_mut()
-        {
-            map.insert("X-Anonymous-Id".to_string(), Value::String(id.to_string()));
-        }
-
-        let mut params = serde_json::json!({
-            "Api": API_NAME,
-            "V": "1.0",
-            "Data": {
-                "queryTokenPlanInstanceInfoRequest": {
-                    "commodityCode": TOKEN_PLAN_COMMODITY_CODE,
-                    "onlyLatestOne": true
-                },
-                "cornerstoneParam": cornerstone
-            }
-        });
-        if let Some(token) = sec_token.filter(|token| !token.trim().is_empty())
-            && let Some(data) = params.get_mut("Data").and_then(Value::as_object_mut)
-        {
-            data.insert("sec_token".to_string(), Value::String(token.to_string()));
-        }
-        params.to_string()
+    fn request_params() -> String {
+        serde_json::json!({
+            "ProductCode": TOKEN_PLAN_COMMODITY_CODE,
+        })
+        .to_string()
     }
 
     fn parse_usage_snapshot(data: &[u8]) -> Result<TokenPlanSnapshot, ProviderError> {
@@ -277,6 +248,24 @@ impl AlibabaTokenPlanProvider {
             let message =
                 find_first_string(value, &["statusMessage", "status_msg", "message", "msg"])
                     .unwrap_or_else(|| format!("status code {status}"));
+            return Err(ProviderError::Other(format!(
+                "Alibaba Token Plan API error: {message}"
+            )));
+        }
+
+        if let Some(success) = find_first_bool(value, &["success", "Success"])
+            && !success
+        {
+            let message = find_first_string(value, &["message", "msg", "Message", "errorMessage"])
+                .unwrap_or_else(|| "request failed".to_string());
+            let lower = message.to_lowercase();
+            if lower.contains("needlogin")
+                || lower.contains("login")
+                || lower.contains("log in")
+                || lower.contains("unauthorized")
+            {
+                return Err(ProviderError::AuthRequired);
+            }
             return Err(ProviderError::Other(format!(
                 "Alibaba Token Plan API error: {message}"
             )));
@@ -440,6 +429,8 @@ const PLAN_NAME_KEYS: &[&str] = &[
     "title",
     "planType",
     "plan_type",
+    "ProductName",
+    "productName",
 ];
 const USED_QUOTA_KEYS: &[&str] = &[
     "usedQuota",
@@ -451,6 +442,10 @@ const USED_QUOTA_KEYS: &[&str] = &[
     "used",
     "usedAmount",
     "consumeAmount",
+    "usedValue",
+    "UsedValue",
+    "consumedValue",
+    "ConsumedValue",
 ];
 const TOTAL_QUOTA_KEYS: &[&str] = &[
     "totalQuota",
@@ -462,6 +457,12 @@ const TOTAL_QUOTA_KEYS: &[&str] = &[
     "creditsTotal",
     "monthlyTotalQuota",
     "amount",
+    "totalValue",
+    "TotalValue",
+    "totalCount",
+    "TotalCount",
+    "subscriptionTotalNumber",
+    "SubscriptionTotalNumber",
 ];
 const REMAINING_QUOTA_KEYS: &[&str] = &[
     "remainingQuota",
@@ -473,6 +474,10 @@ const REMAINING_QUOTA_KEYS: &[&str] = &[
     "remaining",
     "availableAmount",
     "remainAmount",
+    "totalSurplusValue",
+    "TotalSurplusValue",
+    "surplusValue",
+    "SurplusValue",
 ];
 const RESET_DATE_KEYS: &[&str] = &[
     "nextRefreshTime",
@@ -485,6 +490,8 @@ const RESET_DATE_KEYS: &[&str] = &[
     "endTime",
     "validEndTime",
     "instanceEndTime",
+    "nearestExpireDate",
+    "NearestExpireDate",
 ];
 
 fn find_token_plan_instance(value: &Value) -> Option<Value> {
@@ -505,6 +512,9 @@ fn find_token_plan_instance(value: &Value) -> Option<Value> {
                 "token_plan_instance_infos",
                 "instanceInfos",
                 "instances",
+                "Data",
+                "data",
+                "successResponse",
             ],
         )
         .and_then(|values| {
@@ -630,6 +640,22 @@ fn find_first_i64(value: &Value, keys: &[&str]) -> Option<i64> {
     }
 }
 
+fn find_first_bool(value: &Value, keys: &[&str]) -> Option<bool> {
+    match value {
+        Value::Object(map) => keys
+            .iter()
+            .find_map(|key| parse_bool(map.get(*key)))
+            .or_else(|| {
+                map.values()
+                    .find_map(|nested| find_first_bool(nested, keys))
+            }),
+        Value::Array(values) => values
+            .iter()
+            .find_map(|nested| find_first_bool(nested, keys)),
+        _ => None,
+    }
+}
+
 fn first_date(value: &Value, keys: &[&str]) -> Option<DateTime<Utc>> {
     let map = value.as_object()?;
     keys.iter().find_map(|key| parse_date(map.get(*key)))
@@ -699,6 +725,11 @@ fn parse_date(value: Option<&Value>) -> Option<DateTime<Utc>> {
     let text = parse_string(value)?;
     if let Ok(date) = DateTime::parse_from_rfc3339(&text) {
         return Some(date.with_timezone(&Utc));
+    }
+    if let Ok(date) = NaiveDate::parse_from_str(&text, "%Y-%m-%d")
+        && let Some(date_time) = date.and_hms_opt(0, 0, 0)
+    {
+        return Some(date_time.and_utc());
     }
     for format in ["%Y-%m-%d %H:%M", "%Y-%m-%d %H:%M:%S"] {
         if let Ok(date) = NaiveDateTime::parse_from_str(&text, format) {
@@ -857,6 +888,33 @@ mod tests {
             ),
             Some(75.0)
         );
+    }
+
+    #[test]
+    fn parses_new_subscription_summary_payload() {
+        let payload = serde_json::json!({
+            "success": true,
+            "Data": {
+                "ProductName": "Token Plan Team",
+                "TotalValue": "1000000",
+                "TotalSurplusValue": "250000",
+                "NearestExpireDate": "2026-06-30"
+            }
+        });
+        let snapshot =
+            AlibabaTokenPlanProvider::parse_usage_snapshot(payload.to_string().as_bytes()).unwrap();
+        assert_eq!(snapshot.plan_name.as_deref(), Some("Token Plan Team"));
+        assert_eq!(snapshot.total_quota, Some(1_000_000.0));
+        assert_eq!(snapshot.remaining_quota, Some(250_000.0));
+        assert_eq!(
+            used_percent(
+                snapshot.used_quota,
+                snapshot.total_quota,
+                snapshot.remaining_quota
+            ),
+            Some(75.0)
+        );
+        assert!(snapshot.resets_at.is_some());
     }
 
     #[test]

@@ -24,12 +24,14 @@ The Windows port of [CodexBar](https://github.com/steipete/CodexBar) — a syste
 - **CLI** — `codexbar usage`, `codexbar cost`, `codexbar config`, and loopback `codexbar serve` for scripting and local integrations
 - **WSL support** — CLI works out of the box; desktop shell via WSLg
 
-## What's New in v0.29.0
+## What's New in v0.30.0
 
-- Adds Alibaba Token Plan tracking for Bailian token-plan credits with protected cookie-header accounts and browser-cookie support.
-- Shows OpenCode and OpenCode Go renewal dates as a separate **Renews** usage window when the provider exposes `renewAt` / `renew_at`.
-- Splits local Codex cost output into standard vs fast/priority buckets when local logs expose fast model naming.
-- Keeps the v0.28 provider work: Azure OpenAI deployment validation, T3 Chat quota tracking, Ollama API-key support, and hardened OpenAI/MiniMax parsing.
+- Adds DeepSeek usage summaries on top of balance tracking: token totals, request counts, top model, category breakdowns, and current-month cost when the platform API exposes them.
+- Scopes OpenAI Admin API usage by optional project ID from the provider detail pane, while leaving organization-wide usage as the default.
+- Updates Alibaba Token Plan to the current Bailian subscription summary API and broadens parsing for the newer quota/reset field names.
+- Refreshes expired StepFun Oasis tokens when a combined access/refresh token is available.
+- Shows richer Ollama pacing windows and Antigravity per-model quota windows in the tray/settings UI.
+- Keeps the v0.29 provider work: Alibaba Token Plan tracking, OpenCode renewal windows, Codex cost buckets, Azure OpenAI validation, T3 Chat quota tracking, and hardened OpenAI/MiniMax parsing.
 
 ## Quick Start
 
@@ -70,7 +72,7 @@ The installer includes the desktop app, Microsoft's Evergreen WebView2 bootstrap
 For local release builds on a Windows machine, use the cached release builder:
 
 ```powershell
-.\scripts\windows-release-build.ps1 -Ref v0.29.0
+.\scripts\windows-release-build.ps1 -Ref v0.30.0
 ```
 
 Automated Windows release builds now run through CircleCI hosted Windows instead of GitHub Actions or AWS EC2. Cloudflare R2 can mirror verified artifacts after the Windows smoke install passes. See [docs/release/ci-cd.md](docs/release/ci-cd.md).
@@ -80,11 +82,11 @@ The script keeps a clean managed checkout under `C:\code\Win-CodexBar-release\so
 Useful release flags:
 
 ```powershell
-.\scripts\windows-release-build.ps1 -Ref v0.29.0 -WarmCacheOnly
-.\scripts\windows-release-build.ps1 -Ref v0.29.0 -WarmCliCache
-.\scripts\windows-release-build.ps1 -Ref v0.29.0 -SmokeInstall
-.\scripts\windows-release-build.ps1 -Ref v0.29.0 -UploadRelease v0.29.0
-.\scripts\release-doctor.ps1 -Version 0.29.0
+.\scripts\windows-release-build.ps1 -Ref v0.30.0 -WarmCacheOnly
+.\scripts\windows-release-build.ps1 -Ref v0.30.0 -WarmCliCache
+.\scripts\windows-release-build.ps1 -Ref v0.30.0 -SmokeInstall
+.\scripts\windows-release-build.ps1 -Ref v0.30.0 -UploadRelease v0.30.0
+.\scripts\release-doctor.ps1 -Version 0.30.0
 ```
 
 GitHub Actions are manual best-effort only for this project. CircleCI hosted Windows is the primary automated release path for installer and portable artifacts.
@@ -116,7 +118,7 @@ codexbar cost  -p codex           # local cost from JSONL logs
 | Factory | Cookies | Usage |
 | Gemini | gcloud OAuth | Quota |
 | Copilot | GitHub Device Flow / gh CLI / legacy token | Plan usage, Chat |
-| Antigravity | Cookies / LSP | Usage |
+| Antigravity | Local LSP | Usage, Per-model quotas |
 | z.ai | API Token | Quota |
 | MiniMax | API / Cookies | Usage, Billing Summary |
 | Kiro | Cookies / CLI | Monthly Credits, Overage |
@@ -127,13 +129,13 @@ codexbar cost  -p codex           # local cost from JSONL logs
 | Kimi K2 | API Key | Credits |
 | Amp | Cookies | Usage |
 | Warp | Local Config | Usage |
-| Ollama | Cookies / API Key | Usage, Cloud Models |
+| Ollama | Cookies / API Key | Usage, Cloud Models, Pace windows |
 | Azure OpenAI | API Key | Deployment |
 | T3 Chat | Cookies / cURL | Base, Overage |
 | OpenRouter | API Key | Credits |
 | JetBrains AI | Local Config | Usage |
 | Alibaba | Cookies | Usage |
-| Alibaba Token Plan | Cookies | Token Plan Credits |
+| Alibaba Token Plan | Cookies | Token Plan Credits, Reset date |
 | NanoGPT | API Key | Credits |
 | Infini | API Key | Session, Weekly, Quota |
 | Perplexity | Cookies | Credits, Plan |
@@ -142,16 +144,16 @@ codexbar cost  -p codex           # local cost from JSONL logs
 | OpenCode Go | Cookies | Usage, Zen Balance |
 | Kilo | API Key / CLI | Usage |
 | Codebuff | API Key / Local Config | Credits, Weekly |
-| DeepSeek | API Key | Balance |
+| DeepSeek | API Key | Balance, Usage summaries, Cost |
 | Windsurf | Local Cache | Daily, Weekly |
 | Manus | Cookies | Credits, Refresh Credits |
 | Xiaomi MiMo | Cookies | Balance, Token Plan |
 | Doubao | API Key | Request Limits |
 | Command Code | Cookies | Monthly Credits, Purchased Credits |
 | Crof | API Key | Credits, Request Quota |
-| StepFun | Oasis Token | 5h, Weekly |
+| StepFun | Oasis Token | 5h, Weekly, Token refresh |
 | Venice | API Key | USD / DIEM Balance |
-| OpenAI | Admin API / API Key | Usage, Requests, Credit Balance |
+| OpenAI | Admin API / API Key | Usage, Requests, Project-scoped cost, Credit Balance |
 | Grok | Cookies / auth.json | Billing |
 | ElevenLabs | API Key | Subscription Credits, Voice Slots |
 | Deepgram | API Key | Project Usage |

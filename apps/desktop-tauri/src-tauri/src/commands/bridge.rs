@@ -676,6 +676,14 @@ pub(crate) fn bridge_commands() -> Vec<BridgeCommandDescriptor> {
             description: "List supported API region options for a provider (empty if none).",
         },
         BridgeCommandDescriptor {
+            id: "set_provider_workspace_id",
+            description: "Set an optional provider workspace/project scope.",
+        },
+        BridgeCommandDescriptor {
+            id: "get_provider_workspace_id",
+            description: "Read an optional provider workspace/project scope.",
+        },
+        BridgeCommandDescriptor {
             id: "get_gemini_cli_signed_in",
             description: "Detect whether the Gemini CLI is signed in locally.",
         },

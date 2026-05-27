@@ -565,7 +565,7 @@ impl LocaleKey {
             LocaleKey::DetailPaceSlightlyBehind => "Slightly behind",
             LocaleKey::DetailPaceBehind => "Behind",
             LocaleKey::DetailPaceFarBehind => "Far behind",
-            LocaleKey::DetailPaceRunsOutIn => "Runs out in ~{}h",
+            LocaleKey::DetailPaceRunsOutIn => "Runs out in",
             LocaleKey::DetailPaceWillLastToReset => "Will last to reset",
             LocaleKey::DetailCostTitle => "Cost",
             LocaleKey::DetailCostUsed => "Used",

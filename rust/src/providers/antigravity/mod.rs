@@ -309,6 +309,21 @@ impl AntigravityProvider {
             snapshot = snapshot.with_model_specific(ter);
         }
 
+        for (idx, config) in model_configs.iter().enumerate() {
+            let Some(quota) = &config.quota_info else {
+                continue;
+            };
+            let title = clean_model_label(&config.label);
+            if title.is_empty() {
+                continue;
+            }
+            snapshot = snapshot.with_extra_rate_window(
+                format!("model-{idx}"),
+                title,
+                rate_window_from_quota(quota),
+            );
+        }
+
         // Add plan info
         let plan_name = user_status
             .plan_status
@@ -454,6 +469,14 @@ fn rate_window_from_quota(quota: &QuotaInfo) -> RateWindow {
     RateWindow::with_details(used_percent, None, None, quota.reset_time.clone())
 }
 
+fn clean_model_label(label: &str) -> String {
+    let mut out = label.trim().replace('_', " ");
+    while out.contains("  ") {
+        out = out.replace("  ", " ");
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -516,6 +539,12 @@ mod tests {
         assert!((sec.used_percent - 50.0).abs() < 0.1);
         let ter = snap.model_specific.unwrap();
         assert!((ter.used_percent - 10.0).abs() < 0.1);
+        assert_eq!(snap.extra_rate_windows.len(), 3);
+        assert!(
+            snap.extra_rate_windows
+                .iter()
+                .any(|window| window.title == "Gemini 2.5 Flash")
+        );
     }
 
     #[test]

@@ -85,7 +85,8 @@ impl CodexApi {
 
         if !auth_path.exists() {
             return Err(ProviderError::NotInstalled(
-                "Codex auth.json not found. Run 'codex' to log in.".to_string(),
+                "Codex auth.json not found. Run `codex login` in a terminal to sign in."
+                    .to_string(),
             ));
         }
 

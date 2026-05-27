@@ -187,6 +187,33 @@ pub fn get_provider_region(provider_id: String) -> Result<Option<String>, String
     Ok(provider_region_lookup(&Settings::load(), &provider_id))
 }
 
+fn workspace_provider(provider_id: &str) -> Option<codexbar::core::ProviderId> {
+    use codexbar::core::ProviderId;
+    Some(match provider_id {
+        "openaiapi" => ProviderId::OpenAIApi,
+        _ => return None,
+    })
+}
+
+#[tauri::command]
+pub fn set_provider_workspace_id(provider_id: String, workspace_id: String) -> Result<(), String> {
+    let id = workspace_provider(&provider_id).ok_or_else(|| {
+        format!("Provider '{provider_id}' does not expose a workspace/project id")
+    })?;
+    let mut settings = Settings::load();
+    settings.set_workspace_id(id, workspace_id.trim().to_string());
+    settings.save().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_provider_workspace_id(provider_id: String) -> Result<Option<String>, String> {
+    let Some(id) = workspace_provider(&provider_id) else {
+        return Ok(None);
+    };
+    let value = Settings::load().workspace_id(id).trim().to_string();
+    Ok((!value.is_empty()).then_some(value))
+}
+
 // ── Phase 6c — cookie source & region option catalogs ────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

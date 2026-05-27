@@ -19,6 +19,8 @@ const STEPFUN_RATE_LIMIT_URL: &str =
     "https://platform.stepfun.com/api/step.openapi.devcenter.Dashboard/QueryStepPlanRateLimit";
 const STEPFUN_PLAN_STATUS_URL: &str =
     "https://platform.stepfun.com/api/step.openapi.devcenter.Dashboard/GetStepPlanStatus";
+const STEPFUN_REFRESH_TOKEN_URL: &str =
+    "https://platform.stepfun.com/passport/proto.api.passport.v1.PassportService/RefreshToken";
 const STEPFUN_CREDENTIAL_TARGET: &str = "codexbar-stepfun";
 const STEPFUN_WEB_ID: &str = "734152690100432";
 const STEPFUN_APP_ID: &str = "111003695";
@@ -50,6 +52,18 @@ struct StepFunPlanStatusResponse {
 #[derive(Debug, Deserialize)]
 struct StepFunSubscription {
     name: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct StepFunRefreshTokenResponse {
+    access_token: Option<StepFunTokenPair>,
+    refresh_token: Option<StepFunTokenPair>,
+}
+
+#[derive(Debug, Deserialize)]
+struct StepFunTokenPair {
+    raw: String,
 }
 
 pub struct StepFunProvider {
@@ -88,11 +102,35 @@ impl StepFunProvider {
     }
 
     async fn fetch_token(&self, token: &str) -> Result<UsageSnapshot, ProviderError> {
+        match self.fetch_token_once(token).await {
+            Ok(snapshot) => Ok(snapshot),
+            Err(error)
+                if is_authentication_failure(&error)
+                    && token_parts(token).refresh_token.is_some() =>
+            {
+                let refreshed = self.refresh_token(token).await?;
+                self.persist_refreshed_token(&refreshed);
+                self.fetch_token_once(&refreshed)
+                    .await
+                    .map_err(|retry_error| {
+                        if is_authentication_failure(&retry_error) {
+                            ProviderError::AuthRequired
+                        } else {
+                            retry_error
+                        }
+                    })
+            }
+            Err(error) => Err(error),
+        }
+    }
+
+    async fn fetch_token_once(&self, token: &str) -> Result<UsageSnapshot, ProviderError> {
+        let normalized = normalize_token(token);
         let rate_limit = self
-            .post_json::<StepFunRateLimitResponse>(STEPFUN_RATE_LIMIT_URL, token)
+            .post_json::<StepFunRateLimitResponse>(STEPFUN_RATE_LIMIT_URL, &normalized)
             .await?;
         let plan_name = self
-            .post_json::<StepFunPlanStatusResponse>(STEPFUN_PLAN_STATUS_URL, token)
+            .post_json::<StepFunPlanStatusResponse>(STEPFUN_PLAN_STATUS_URL, &normalized)
             .await
             .ok()
             .and_then(|response| {
@@ -102,6 +140,33 @@ impl StepFunProvider {
                     .and_then(|subscription| subscription.name)
             });
         snapshot_from_response(&rate_limit, plan_name)
+    }
+
+    async fn refresh_token(&self, token: &str) -> Result<String, ProviderError> {
+        let normalized = normalize_token(token);
+        let response = self
+            .post_json::<StepFunRefreshTokenResponse>(STEPFUN_REFRESH_TOKEN_URL, &normalized)
+            .await?;
+        let access = response
+            .access_token
+            .map(|token| token.raw)
+            .filter(|token| !token.trim().is_empty())
+            .ok_or_else(|| ProviderError::AuthRequired)?;
+        Ok(combined_token(
+            &access,
+            response
+                .refresh_token
+                .as_ref()
+                .map(|token| token.raw.as_str()),
+        ))
+    }
+
+    fn persist_refreshed_token(&self, token: &str) {
+        if let Ok(entry) = keyring::Entry::new(STEPFUN_CREDENTIAL_TARGET, "api_key") {
+            if let Err(error) = entry.set_password(token) {
+                tracing::debug!("Could not persist refreshed StepFun token: {error}");
+            }
+        }
     }
 
     async fn post_json<T: for<'de> Deserialize<'de>>(
@@ -153,6 +218,9 @@ fn snapshot_from_response(
             .or_else(|| response.desc.clone())
             .or_else(|| response.code.map(|code| code.to_string()))
             .unwrap_or_else(|| "unknown".into());
+        if is_authentication_message(&msg) {
+            return Err(ProviderError::AuthRequired);
+        }
         return Err(ProviderError::Other(format!("StepFun API error: {msg}")));
     }
 
@@ -195,6 +263,68 @@ fn snapshot_from_response(
         snapshot = snapshot.with_login_method("Oasis-Token");
     }
     Ok(snapshot)
+}
+
+struct StepFunTokenParts {
+    access_token: String,
+    refresh_token: Option<String>,
+}
+
+fn token_parts(token: &str) -> StepFunTokenParts {
+    let normalized = normalize_token(token);
+    let (access_token, refresh_token) = normalized
+        .split_once("...")
+        .map(|(access, refresh)| {
+            (
+                access.trim().to_string(),
+                Some(refresh.trim().to_string()).filter(|value| !value.is_empty()),
+            )
+        })
+        .unwrap_or_else(|| (normalized.trim().to_string(), None));
+    StepFunTokenParts {
+        access_token,
+        refresh_token,
+    }
+}
+
+fn normalize_token(raw: &str) -> String {
+    let trimmed = raw.trim();
+    if let Some((_, tail)) = trimmed.split_once("Oasis-Token=") {
+        return tail.split(';').next().unwrap_or(tail).trim().to_string();
+    }
+    trimmed.to_string()
+}
+
+fn combined_token(access_token: &str, refresh_token: Option<&str>) -> String {
+    match refresh_token
+        .map(str::trim)
+        .filter(|token| !token.is_empty())
+    {
+        Some(refresh_token) => format!("{}...{}", access_token.trim(), refresh_token),
+        None => access_token.trim().to_string(),
+    }
+}
+
+fn is_authentication_failure(error: &ProviderError) -> bool {
+    matches!(error, ProviderError::AuthRequired)
+        || match error {
+            ProviderError::Other(message) | ProviderError::Parse(message) => {
+                is_authentication_message(message)
+            }
+            _ => false,
+        }
+}
+
+fn is_authentication_message(message: &str) -> bool {
+    let lower = message.to_lowercase();
+    lower.contains("401")
+        || lower.contains("403")
+        || lower.contains("unauthorized")
+        || lower.contains("unauthenticated")
+        || lower.contains("invalid credentials")
+        || lower.contains("invalid token")
+        || lower.contains("token expired")
+        || lower.contains("expired token")
 }
 
 fn reset_description(date: DateTime<Utc>) -> String {
@@ -328,5 +458,23 @@ mod tests {
         let snapshot = snapshot_from_response(&response, Some("Step Plan".into())).unwrap();
         assert_eq!(snapshot.primary.used_percent, 75.0);
         assert_eq!(snapshot.secondary.unwrap().used_percent, 25.0);
+    }
+
+    #[test]
+    fn stepfun_token_parts_extract_cookie_and_refresh_token() {
+        let parts = token_parts("Cookie: Oasis-Token=access...refresh; Oasis-Webid=abc");
+        assert_eq!(parts.access_token, "access");
+        assert_eq!(parts.refresh_token.as_deref(), Some("refresh"));
+        assert_eq!(
+            combined_token("new-access", Some("new-refresh")),
+            "new-access...new-refresh"
+        );
+    }
+
+    #[test]
+    fn stepfun_authentication_messages_are_actionable() {
+        assert!(is_authentication_message("token expired"));
+        assert!(is_authentication_message("HTTP 401"));
+        assert!(!is_authentication_message("rate limit"));
     }
 }

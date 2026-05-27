@@ -4,6 +4,7 @@
 //! Uses session cookies from browser or manual input
 
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use regex_lite::Regex;
 use serde::Deserialize;
 
@@ -22,6 +23,14 @@ const OLLAMA_SESSION_COOKIE_NAME: &str = "__Secure-session";
 /// Ollama provider
 pub struct OllamaProvider {
     metadata: ProviderMetadata,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct UsageBlock {
+    used_percent: f64,
+    window_minutes: Option<u32>,
+    resets_at: Option<DateTime<Utc>>,
+    reset_description: Option<String>,
 }
 
 impl OllamaProvider {
@@ -237,16 +246,17 @@ impl OllamaProvider {
             return Err(ProviderError::AuthRequired);
         }
 
-        let session_percent = self.parse_usage_block(&["Session usage", "Hourly usage"], html);
-        let weekly_percent = self.parse_usage_block(&["Weekly usage"], html);
+        let session_block =
+            self.parse_usage_block(&["Session usage", "Hourly usage"], html, Some(5 * 60));
+        let weekly_block = self.parse_usage_block(&["Weekly usage"], html, Some(7 * 24 * 60));
 
-        if session_percent.is_none() && weekly_percent.is_none() {
+        if session_block.is_none() && weekly_block.is_none() {
             return Err(ProviderError::Parse(
                 "Could not find usage data on Ollama settings page".to_string(),
             ));
         }
 
-        let primary = RateWindow::new(session_percent.unwrap_or(0.0));
+        let primary = rate_window_from_usage_block(session_block.as_ref());
         let mut usage = UsageSnapshot::new(primary);
 
         // Parse plan name
@@ -259,26 +269,37 @@ impl OllamaProvider {
             usage = usage.with_login_method(&email);
         }
 
-        if let Some(weekly) = weekly_percent {
-            usage = usage.with_secondary(RateWindow::new(weekly));
+        if let Some(weekly) = weekly_block.as_ref() {
+            usage = usage.with_secondary(rate_window_from_usage_block(Some(weekly)));
         }
 
         Ok(usage)
     }
 
     /// Parse a usage block by looking for a label then extracting the percentage
-    fn parse_usage_block(&self, labels: &[&str], html: &str) -> Option<f64> {
+    fn parse_usage_block(
+        &self,
+        labels: &[&str],
+        html: &str,
+        window_minutes: Option<u32>,
+    ) -> Option<UsageBlock> {
         for label in labels {
             if let Some(pos) = html.find(label) {
                 let tail = &html[pos..];
-                let window = &tail[..tail.len().min(800)];
+                let end = usage_block_end(tail, label).unwrap_or_else(|| tail.len().min(4000));
+                let window = &tail[..end.min(tail.len())];
 
                 // Try "XX% used" pattern
                 let used_re = Regex::new(r"(\d+(?:\.\d+)?)\s*%\s*used").ok()?;
                 if let Some(caps) = used_re.captures(window)
                     && let Ok(val) = caps[1].parse::<f64>()
                 {
-                    return Some(val);
+                    return Some(UsageBlock {
+                        used_percent: val,
+                        window_minutes,
+                        resets_at: parse_first_datetime(window),
+                        reset_description: parse_reset_description(window),
+                    });
                 }
 
                 // Try "width: XX%" pattern (progress bar CSS)
@@ -286,7 +307,12 @@ impl OllamaProvider {
                 if let Some(caps) = width_re.captures(window)
                     && let Ok(val) = caps[1].parse::<f64>()
                 {
-                    return Some(val);
+                    return Some(UsageBlock {
+                        used_percent: val,
+                        window_minutes,
+                        resets_at: parse_first_datetime(window),
+                        reset_description: parse_reset_description(window),
+                    });
                 }
             }
         }
@@ -373,6 +399,52 @@ fn clean_secret(raw: Option<&str>) -> Option<String> {
     (!value.is_empty()).then_some(value)
 }
 
+fn usage_block_end(tail: &str, current_label: &str) -> Option<usize> {
+    ["Session usage", "Hourly usage", "Weekly usage"]
+        .iter()
+        .filter(|label| **label != current_label)
+        .filter_map(|label| tail.get(current_label.len()..)?.find(label))
+        .map(|idx| idx + current_label.len())
+        .min()
+        .map(|idx| idx.min(4000))
+}
+
+fn rate_window_from_usage_block(block: Option<&UsageBlock>) -> RateWindow {
+    block
+        .map(|block| {
+            RateWindow::with_details(
+                block.used_percent,
+                block.window_minutes,
+                block.resets_at,
+                block.reset_description.clone(),
+            )
+        })
+        .unwrap_or_else(|| RateWindow::new(0.0))
+}
+
+fn parse_first_datetime(html: &str) -> Option<DateTime<Utc>> {
+    let re =
+        Regex::new(r#"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})"#).ok()?;
+    let raw = re.find(html)?.as_str();
+    DateTime::parse_from_rfc3339(raw)
+        .ok()
+        .map(|date| date.with_timezone(&Utc))
+}
+
+fn parse_reset_description(html: &str) -> Option<String> {
+    let re = Regex::new(r"(?i)(resets?\s+in\s+[^<\n\r]+|reset\s+[^<\n\r]+)").ok()?;
+    re.find(html)
+        .map(|m| strip_html_entities(m.as_str()).trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn strip_html_entities(value: &str) -> String {
+    value
+        .replace("&nbsp;", " ")
+        .replace("&amp;", "&")
+        .replace("&#x2F;", "/")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -430,5 +502,25 @@ mod tests {
             Some("2 cloud models available")
         );
         assert_eq!(snapshot.login_method.as_deref(), Some("API key"));
+    }
+
+    #[test]
+    fn parses_ollama_usage_blocks_with_window_bounds() {
+        let provider = OllamaProvider::new();
+        let html = r#"
+            <section>Session usage <div style="width: 42%"></div><span>resets in 2h</span></section>
+            <section>Weekly usage <span>84% used</span><time>2026-06-01T00:00:00Z</time></section>
+        "#;
+        let session = provider
+            .parse_usage_block(&["Session usage", "Hourly usage"], html, Some(300))
+            .unwrap();
+        let weekly = provider
+            .parse_usage_block(&["Weekly usage"], html, Some(10080))
+            .unwrap();
+        assert_eq!(session.used_percent, 42.0);
+        assert_eq!(session.window_minutes, Some(300));
+        assert_eq!(session.reset_description.as_deref(), Some("resets in 2h"));
+        assert_eq!(weekly.used_percent, 84.0);
+        assert!(weekly.resets_at.is_some());
     }
 }

@@ -486,7 +486,9 @@ function CredentialsDispatcher({
     case "claude":
       return <ClaudeCreds t={t} />;
     case "codex":
-      return <OpenAiExtras t={t} />;
+      return <OpenAiExtras providerId={providerId} t={t} />;
+    case "openaiapi":
+      return <OpenAiExtras providerId={providerId} t={t} />;
     default:
       return null;
   }

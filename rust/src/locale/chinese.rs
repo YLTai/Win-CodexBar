@@ -526,7 +526,7 @@ impl LocaleKey {
             LocaleKey::DetailPaceSlightlyBehind => "略落后",
             LocaleKey::DetailPaceBehind => "落后",
             LocaleKey::DetailPaceFarBehind => "远落后",
-            LocaleKey::DetailPaceRunsOutIn => "约 {} 小时后耗尽",
+            LocaleKey::DetailPaceRunsOutIn => "预计耗尽时间",
             LocaleKey::DetailPaceWillLastToReset => "足以支撑到重置",
             LocaleKey::DetailCostTitle => "费用",
             LocaleKey::DetailCostUsed => "已用",

@@ -73,10 +73,13 @@ pub(crate) fn build_fetch_context(
         .map(|s| s.to_string())
         .or(active_token_api_key);
 
+    let workspace_id = settings.workspace_id(id).trim().to_string();
+
     FetchContext {
         source_mode,
         manual_cookie_header: cookie_header,
         api_key,
+        workspace_id: (!workspace_id.is_empty()).then_some(workspace_id),
         ..FetchContext::default()
     }
 }
