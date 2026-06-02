@@ -53,7 +53,7 @@ For Claude, browser cookies/sessionKey are preferred because they match Claude's
 
 ## Latest Release
 
-**v0.32.4** fixes OpenRouter credits fetching by using the canonical `/api/v1/credits` endpoint instead of the broken `/api/v1/auth/credits` path. It also aligns OpenRouter key introspection with `/api/v1/key` and adds regression tests for both URL paths.
+**v0.32.5** fixes two targeted upstream provider issues: GitHub Copilot Business token-based billing quota rows no longer show misleading `0% used` usage, and OpenAI Web login/Cloudflare blocking states are prioritized over public-route detection.
 
 See the full history in [CHANGELOG.md](CHANGELOG.md).
 
@@ -143,7 +143,7 @@ codexbar cost -p codex
 For local Windows release builds, use the cached release builder:
 
 ```powershell
-.\scripts\windows-release-build.ps1 -Ref v0.32.4 -SmokeInstall
+.\scripts\windows-release-build.ps1 -Ref v0.32.5 -SmokeInstall
 ```
 
 The script builds the real Tauri release binary, verifies signed installer dependencies, packages with Inno Setup, writes installer/portable assets, writes SHA-256 sidecars, and can run a silent install/uninstall smoke test.

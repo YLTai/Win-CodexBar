@@ -4,6 +4,15 @@
 
 ---
 
+## [Windows] 0.32.5 - 2026-06-02
+
+### Fixed
+- Treat GitHub Copilot Business token-based billing zero-entitlement quota rows as unavailable instead of showing misleading `0% used` usage.
+- Keep percent-only Copilot quota snapshots and fully consumed positive-entitlement quotas working while dropping only explicit zero-entitlement placeholders.
+- Prioritize OpenAI Web login and Cloudflare blocking states over public-route detection so blocked dashboard responses do not get misclassified.
+
+---
+
 ## [Windows] 0.32.4 - 2026-06-02
 
 ### Fixed
