@@ -217,15 +217,7 @@ try {
     Write-Host "pnpm store cache: $PnpmStoreDir"
 
     if ($WarmCliCache) {
-        $env:CARGO_TARGET_DIR = $CliCargoTargetDir
-        Write-Host "CLI Cargo target cache: $CliCargoTargetDir"
-        Invoke-Native $cargo.Source @(
-            "build",
-            "--manifest-path", "rust\Cargo.toml",
-            "--release",
-            "--bin", "codexbar"
-        )
-        $env:CARGO_TARGET_DIR = $DesktopCargoTargetDir
+        Write-Host "WarmCliCache requested; the CLI is now built during every release packaging run."
     }
 
     Invoke-Native $pnpm.Source @(
@@ -306,19 +298,42 @@ try {
         throw "pnpm tauri build exited with code $tauriExitCode"
     }
 
+    $desktopExe = Join-Path $releaseBinDir "codexbar-desktop.exe"
     $releaseExe = Join-Path $releaseBinDir "codexbar.exe"
     if (-not (Test-Path $sourceExe)) {
         throw "Missing expected Tauri binary: $sourceExe"
     }
 
-    Copy-Item $sourceExe $releaseExe -Force
-    if (Get-ObjdumpImportsWebView2Loader -ExePath $releaseExe) {
-        throw "codexbar.exe imports WebView2Loader.dll, but release builds are expected to statically link the loader."
+    Copy-Item $sourceExe $desktopExe -Force
+    if (Get-ObjdumpImportsWebView2Loader -ExePath $desktopExe) {
+        throw "codexbar-desktop.exe imports WebView2Loader.dll, but release builds are expected to statically link the loader."
     }
+
+    $env:CARGO_TARGET_DIR = $CliCargoTargetDir
+    Write-Host "Building CLI binary"
+    Write-Host "CLI Cargo target cache: $CliCargoTargetDir"
+    Invoke-Native $cargo.Source @(
+        "build",
+        "--manifest-path", "rust\Cargo.toml",
+        "--release",
+        "--bin", "codexbar"
+    )
+    $env:CARGO_TARGET_DIR = $DesktopCargoTargetDir
+
+    $cliBinDir = if ($env:CARGO_BUILD_TARGET) {
+        Join-Path $CliCargoTargetDir "$($env:CARGO_BUILD_TARGET)\release"
+    } else {
+        Join-Path $CliCargoTargetDir "release"
+    }
+    $sourceCliExe = Join-Path $cliBinDir "codexbar.exe"
+    if (-not (Test-Path $sourceCliExe)) {
+        throw "Missing expected CLI binary: $sourceCliExe"
+    }
+    Copy-Item $sourceCliExe $releaseExe -Force
 
     if ($WarmCacheOnly) {
         $warmExe = Join-Path $AssetsDir "CodexBar-$version-warm.exe"
-        Copy-Item $releaseExe $warmExe -Force
+        Copy-Item $desktopExe $warmExe -Force
         Write-Host ""
         Write-Host "Warm build artifact: $warmExe"
         Write-Host "Warm cache completed. Skipping installer packaging because -WarmCacheOnly was supplied."
@@ -366,13 +381,13 @@ try {
     $portableExe = Join-Path $AssetsDir "CodexBar-$version-portable.exe"
     $installerAsset = Join-Path $AssetsDir "CodexBar-$version-Setup.exe"
 
-    foreach ($path in @($releaseExe, $installer)) {
+    foreach ($path in @($desktopExe, $releaseExe, $installer)) {
         if (-not (Test-Path $path)) {
             throw "Missing expected asset: $path"
         }
     }
 
-    Copy-Item $releaseExe $portableExe -Force
+    Copy-Item $desktopExe $portableExe -Force
     Copy-Item $installer $installerAsset -Force
 
     foreach ($asset in @($installerAsset, $portableExe)) {

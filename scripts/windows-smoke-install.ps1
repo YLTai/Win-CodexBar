@@ -49,7 +49,7 @@ if ($signature.Status -eq "Valid") {
     Write-Step "installer signature: $($signature.Status)"
 }
 
-foreach ($name in @("codexbar", "codexbar-desktop-tauri")) {
+foreach ($name in @("codexbar", "codexbar-desktop", "codexbar-desktop-tauri")) {
     Get-Process -Name $name -ErrorAction SilentlyContinue | Stop-Process -Force
 }
 
@@ -70,12 +70,36 @@ if ($install.ExitCode -notin @(0, 3010)) {
 }
 
 $exe = Join-Path $InstallDir "codexbar.exe"
+$desktopExe = Join-Path $InstallDir "codexbar-desktop.exe"
 $icon = Join-Path $InstallDir "icon.ico"
-Assert-Path -Path $exe -Label "installed executable"
+Assert-Path -Path $exe -Label "installed CLI executable"
+Assert-Path -Path $desktopExe -Label "installed desktop executable"
 Assert-Path -Path $icon -Label "icon"
 
 $installedHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $exe).Hash.ToLowerInvariant()
 Write-Step "installed codexbar.exe sha256: $installedHash"
+$desktopHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $desktopExe).Hash.ToLowerInvariant()
+Write-Step "installed codexbar-desktop.exe sha256: $desktopHash"
+
+if ($ExpectedVersion) {
+    $versionOutput = (& $exe --version) -join "`n"
+    if ($LASTEXITCODE -ne 0) {
+        throw "codexbar.exe --version exited with $LASTEXITCODE"
+    }
+    if ($versionOutput -notmatch [regex]::Escape($ExpectedVersion)) {
+        throw "Expected codexbar.exe --version to mention $ExpectedVersion, got: $versionOutput"
+    }
+    Write-Step "CLI version output: $versionOutput"
+}
+
+$helpOutput = (& $exe --help) -join "`n"
+if ($LASTEXITCODE -ne 0) {
+    throw "codexbar.exe --help exited with $LASTEXITCODE"
+}
+if ($helpOutput -notmatch "Usage:" -or $helpOutput -notmatch "diagnose") {
+    throw "codexbar.exe --help did not print CLI help."
+}
+Write-Step "CLI help output: ok"
 
 $uninstallKeys = @(
     "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\WinCodexBar_is1",
@@ -128,8 +152,10 @@ if (-not $LeaveInstalled) {
     if ($uninstall.ExitCode -notin @(0, 3010)) {
         throw "Uninstaller exited with $($uninstall.ExitCode). Log: $uninstallLog"
     }
-    if (Test-Path -LiteralPath $exe) {
-        throw "Executable still exists after uninstall: $exe"
+    foreach ($leftover in @($exe, $desktopExe)) {
+        if (Test-Path -LiteralPath $leftover) {
+            throw "Executable still exists after uninstall: $leftover"
+        }
     }
 }
 

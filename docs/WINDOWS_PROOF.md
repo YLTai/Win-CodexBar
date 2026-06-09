@@ -55,9 +55,10 @@ For the Inno Setup release artifact, prefer the cached Windows release builder:
 
 It keeps a clean managed checkout while reusing Cargo, pnpm, and signed
 installer dependency caches. Use `-WarmCacheOnly` after large ports to prepare
-the desktop cache without packaging, `-WarmCliCache` to warm CLI artifacts in a
-separate target cache, `-SmokeInstall` to install/uninstall the generated
-installer, and `-UploadRelease vX.Y.Z` to upload assets directly to GitHub.
+the desktop cache without packaging, `-WarmCliCache` as a compatibility alias
+because release packaging now builds CLI artifacts every time, `-SmokeInstall`
+to install/uninstall the generated installer, and `-UploadRelease vX.Y.Z` to
+upload assets directly to GitHub.
 Run the standalone smoke installer test on a Windows machine before manual
 upload or publication:
 
@@ -69,10 +70,10 @@ powershell -ExecutionPolicy Bypass `
 ```
 
 The script verifies the silent install switches
-`/VERYSILENT /SUPPRESSMSGBOXES /NORESTART`, installed files,
-Start Menu shortcut, uninstall registry entry, optional version match, and
-silent uninstall cleanup. Add `-LeaveInstalled` when the VM should keep the
-installed app for manual UI validation.
+`/VERYSILENT /SUPPRESSMSGBOXES /NORESTART`, installed files, CLI `--help` and
+`--version` output, Start Menu shortcut, uninstall registry entry, optional
+version match, and silent uninstall cleanup. Add `-LeaveInstalled` when the VM
+should keep the installed app for manual UI validation.
 
 ---
 

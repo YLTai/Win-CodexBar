@@ -2,6 +2,7 @@
 
 use std::time::Duration;
 
+mod auto_refresh;
 mod commands;
 mod events;
 mod floatbar;
@@ -158,6 +159,7 @@ fn main() {
             tray_bridge::setup(app)?;
             shortcut_bridge::register(app.handle());
             floatbar::install(app.handle());
+            auto_refresh::install(app.handle().clone());
 
             // The frontend receives surface state before show, so fixed
             // startup sleeps only make tray activation feel slower.
