@@ -91,7 +91,8 @@ function UsageBar({
   resetTimeRelative: boolean;
   t: (key: LocaleKey) => string;
 }) {
-  const pct = rate.isExhausted ? 100 : Math.min(100, rate.usedPercent);
+  const usedPct = Number.isFinite(rate.usedPercent) ? Math.max(0, rate.usedPercent) : 0;
+  const pct = Math.min(100, usedPct);
   const formattedReset = useFormattedResetTime(
     rate.resetsAt,
     rate.resetDescription,
@@ -112,8 +113,10 @@ function UsageBar({
           data-exhausted={rate.isExhausted || undefined}
         >
           {rate.isExhausted
-            ? t("DetailWindowExhausted")
-            : `${pct.toFixed(0)}%`}
+            ? usedPct > 100
+              ? `${usedPct.toFixed(0)}%`
+              : t("DetailWindowExhausted")
+            : `${usedPct.toFixed(0)}%`}
         </span>
       </div>
       <div className="provider-usage-bar__track">

@@ -255,9 +255,8 @@ function providerSidebarMetric(
   if (!snap) return undefined;
   const rate = snap.primary;
   if (!rate) return undefined;
-  if (rate.isExhausted) return "100%";
   if (Number.isFinite(rate.usedPercent)) {
-    return `${Math.round(Math.min(100, rate.usedPercent))}%`;
+    return `${Math.round(Math.max(0, rate.usedPercent))}%`;
   }
   return undefined;
 }

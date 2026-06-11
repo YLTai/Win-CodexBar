@@ -16,8 +16,9 @@ function usageLevel(pct: number, exhausted: boolean): UsageLevel {
 }
 
 export default function UsageBar({ window: w, label, compact }: UsageBarProps) {
-  const pct = Math.min(100, Math.max(0, w.usedPercent));
-  const level = usageLevel(pct, w.isExhausted);
+  const rawPct = Number.isFinite(w.usedPercent) ? Math.max(0, w.usedPercent) : 0;
+  const pct = Math.min(100, rawPct);
+  const level = usageLevel(rawPct, w.isExhausted);
 
   return (
     <div className={`usage-bar ${compact ? "usage-bar--compact" : ""}`}>
@@ -29,7 +30,7 @@ export default function UsageBar({ window: w, label, compact }: UsageBarProps) {
           style={{ width: `${pct}%` }}
         />
       </div>
-      <span className="usage-bar__pct">{pct.toFixed(0)}%</span>
+      <span className="usage-bar__pct">{rawPct.toFixed(0)}%</span>
     </div>
   );
 }

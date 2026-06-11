@@ -22,24 +22,31 @@ import { buildBundle } from "../test/localeHarness";
 import type { ProviderUsageSnapshot } from "../types/bridge";
 import MenuCard from "./MenuCard";
 
-function rateWindow(usedPercent = 0) {
+function rateWindow(
+  usedPercent = 0,
+  opts: { exhausted?: boolean; resetDescription?: string | null } = {},
+) {
   return {
     usedPercent,
     remainingPercent: 100 - usedPercent,
     windowMinutes: null,
     resetsAt: null,
-    resetDescription: null,
-    isExhausted: false,
+    resetDescription: opts.resetDescription ?? null,
+    isExhausted: opts.exhausted ?? false,
     reservePercent: null,
     reserveDescription: null,
   };
 }
 
-function provider(error: string | null, usedPercent = 0): ProviderUsageSnapshot {
+function provider(
+  error: string | null,
+  usedPercent = 0,
+  opts: { exhausted?: boolean; resetDescription?: string | null } = {},
+): ProviderUsageSnapshot {
   return {
     providerId: "claude",
     displayName: "Claude",
-    primary: rateWindow(usedPercent),
+    primary: rateWindow(usedPercent, opts),
     primaryLabel: "Session",
     secondary: null,
     modelSpecific: null,
@@ -124,6 +131,16 @@ describe("MenuCard", () => {
 
     const fill = document.querySelector<HTMLElement>(".menu-metric__bar-fill");
     expect(fill?.style.width).toBe("35%");
+  });
+
+  it("displays over-quota usage without overflowing the bar", async () => {
+    renderCard(provider(null, 115, { exhausted: true, resetDescription: "115% used" }), {
+      showAsUsed: true,
+    });
+
+    expect(await screen.findAllByText("115% used")).not.toHaveLength(0);
+    const fill = document.querySelector<HTMLElement>(".menu-metric__bar-fill");
+    expect(fill?.style.width).toBe("100%");
   });
 
   it("notifies the tray panel after async local usage data loads", async () => {

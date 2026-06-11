@@ -258,9 +258,11 @@ function MetricRow({
   resetTimeRelative: boolean;
   showAsUsed: boolean;
 }) {
-  const pct = Math.min(100, Math.max(0, snap.usedPercent));
-  const remain = 100 - pct;
-  const displayPct = showAsUsed ? pct : remain;
+  const usedPct = Number.isFinite(snap.usedPercent) ? Math.max(0, snap.usedPercent) : 0;
+  const barPct = Math.min(100, usedPct);
+  const remain = 100 - usedPct;
+  const displayPct = showAsUsed ? usedPct : Math.max(0, remain);
+  const barDisplayPct = showAsUsed ? barPct : Math.max(0, Math.min(100, remain));
   const displayLabel = showAsUsed ? "used" : "left";
   const level = levelOf(remain, snap.isExhausted);
   const resetText = useFormattedResetTime(
@@ -272,7 +274,7 @@ function MetricRow({
     <div className="menu-metric">
       <span className="menu-metric__title">{title}</span>
       <div className="menu-metric__bar">
-        <div className="menu-metric__bar-fill" data-level={level} style={{ width: `${displayPct}%` }} />
+        <div className="menu-metric__bar-fill" data-level={level} style={{ width: `${barDisplayPct}%` }} />
       </div>
       <div className="menu-metric__row">
         <span className="menu-metric__pct">{Math.round(displayPct)}% {displayLabel}</span>

@@ -354,7 +354,7 @@ impl UsableQuota {
             let entitlement = snapshot.entitlement?;
             let remaining = snapshot.remaining?;
             if entitlement > 0.0 {
-                Some((remaining / entitlement * 100.0).clamp(0.0, 100.0))
+                Some(remaining / entitlement * 100.0)
             } else {
                 None
             }
@@ -392,12 +392,19 @@ impl UsableQuota {
 
         Some(Self {
             kind,
-            percent_remaining: (remaining / entitlement * 100.0).clamp(0.0, 100.0),
+            percent_remaining: remaining / entitlement * 100.0,
         })
     }
 
     fn to_rate_window(&self, reset: Option<DateTime<Utc>>) -> RateWindow {
-        RateWindow::with_details((100.0 - self.percent_remaining).max(0.0), None, reset, None)
+        let used_percent = (100.0 - self.percent_remaining).max(0.0);
+        let reset_description = (used_percent > 100.0).then(|| format!("{used_percent:.0}% used"));
+        RateWindow {
+            used_percent,
+            window_minutes: None,
+            resets_at: reset,
+            reset_description,
+        }
     }
 }
 
@@ -797,6 +804,52 @@ mod tests {
         );
 
         assert!((usage.primary.used_percent - 100.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn preserves_over_quota_percent_remaining() {
+        let usage = parse_snapshot(
+            r#"{
+                "copilot_plan": "pro",
+                "quota_snapshots": {
+                    "premium_interactions": {
+                        "entitlement": 500,
+                        "remaining": -75,
+                        "percent_remaining": -15,
+                        "quota_id": "premium_interactions"
+                    }
+                }
+            }"#,
+        );
+
+        assert_eq!(usage.login_method.as_deref(), Some("Copilot Pro"));
+        assert!((usage.primary.used_percent - 115.0).abs() < 0.001);
+        assert_eq!(
+            usage.primary.reset_description.as_deref(),
+            Some("115% used")
+        );
+        assert!(usage.primary.is_exhausted());
+    }
+
+    #[test]
+    fn derives_over_quota_percent_from_negative_remaining() {
+        let usage = parse_snapshot(
+            r#"{
+                "quota_snapshots": {
+                    "chat": {
+                        "entitlement": 500,
+                        "remaining": -75,
+                        "quota_id": "chat"
+                    }
+                }
+            }"#,
+        );
+
+        assert!((usage.primary.used_percent - 115.0).abs() < 0.001);
+        assert_eq!(
+            usage.primary.reset_description.as_deref(),
+            Some("115% used")
+        );
     }
 
     #[test]
