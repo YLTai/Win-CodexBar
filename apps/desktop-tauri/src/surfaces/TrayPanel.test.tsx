@@ -523,7 +523,7 @@ describe("TrayPanel provider grid", () => {
     expect(tauriMocks.reanchorTrayPanel).not.toHaveBeenCalled();
   });
 
-  it("reserves dense all-provider height on first layout", async () => {
+  it("keeps collapsed dense overview compact on first layout", async () => {
     const setSize = vi.fn().mockResolvedValue(undefined);
     windowMocks.getCurrentWindow.mockReturnValue({
       setSize,
@@ -539,7 +539,7 @@ describe("TrayPanel provider grid", () => {
 
     await waitFor(() => {
       expect(setSize).toHaveBeenCalledWith(
-        expect.objectContaining({ width: 328, height: 776 }),
+        expect.objectContaining({ width: 328, height: 200 }),
       );
     });
   });

@@ -10,11 +10,9 @@ const TRAY_WIDTH = 328;
 const TRAY_MAX_MEASURE_HEIGHT = 920;
 const TRAY_OVERVIEW_MIN_HEIGHT = 200;
 const TRAY_DETAIL_MIN_HEIGHT = 420;
-const TRAY_DENSE_OVERVIEW_HEIGHT = 776;
 
 export interface TrayPanelLayoutOptions {
   canMeasure: boolean;
-  denseOverview: boolean;
   detailMode: boolean;
   layoutKey: string;
 }
@@ -26,7 +24,6 @@ export interface TrayPanelLayout {
 
 export function useTrayPanelLayout({
   canMeasure,
-  denseOverview,
   detailMode,
   layoutKey,
 }: TrayPanelLayoutOptions): TrayPanelLayout {
@@ -69,11 +66,7 @@ export function useTrayPanelLayout({
   useEffect(() => {
     if (!canMeasure) return;
 
-    const minHeight = detailMode
-      ? TRAY_DETAIL_MIN_HEIGHT
-      : denseOverview
-        ? TRAY_DENSE_OVERVIEW_HEIGHT
-        : TRAY_OVERVIEW_MIN_HEIGHT;
+    const minHeight = detailMode ? TRAY_DETAIL_MIN_HEIGHT : TRAY_OVERVIEW_MIN_HEIGHT;
 
     const resize = async () => {
       const run = ++resizeRunRef.current;
@@ -209,7 +202,7 @@ export function useTrayPanelLayout({
       window.clearTimeout(timer);
       resizeRunRef.current += 1;
     };
-  }, [canMeasure, denseOverview, detailMode, layoutRevision]);
+  }, [canMeasure, detailMode, layoutRevision]);
 
   return { layoutReady, requestLayout };
 }

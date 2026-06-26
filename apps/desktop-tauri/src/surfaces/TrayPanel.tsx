@@ -171,7 +171,6 @@ export default function TrayPanel({ state }: { state: BootstrapState }) {
 
   const { layoutReady, requestLayout } = useTrayPanelLayout({
     canMeasure: hasLoadedCache || sorted.length > 0,
-    denseOverview: expectsDenseOverview,
     detailMode: selectedProviderId !== null,
     layoutKey,
   });
