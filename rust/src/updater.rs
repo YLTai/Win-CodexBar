@@ -479,7 +479,11 @@ pub fn apply_update(installer_path: &PathBuf) -> Result<(), String> {
     }
 
     #[cfg(target_os = "windows")]
-    spawn_windows_installer(installer_path)?;
+    spawn_windows_installer(
+        installer_path,
+        &std::env::current_exe()
+            .map_err(|e| format!("Failed to determine current executable for restart: {e}"))?,
+    )?;
 
     #[cfg(not(target_os = "windows"))]
     {
@@ -495,7 +499,7 @@ pub fn apply_update(installer_path: &PathBuf) -> Result<(), String> {
 }
 
 #[cfg(target_os = "windows")]
-fn spawn_windows_installer(installer_path: &Path) -> Result<(), String> {
+fn spawn_windows_installer(installer_path: &Path, relaunch_path: &Path) -> Result<(), String> {
     use std::process::Command;
 
     let plan = windows_installer_launch_plan(installer_path)?;
@@ -507,7 +511,7 @@ fn spawn_windows_installer(installer_path: &Path) -> Result<(), String> {
             "-WindowStyle",
             "Hidden",
             "-Command",
-            &windows_installer_apply_script(&plan, std::process::id()),
+            &windows_installer_apply_script(&plan, std::process::id(), relaunch_path),
         ])
         .spawn()
         .map_err(|e| format!("Failed to launch installer: {}", e))?;
@@ -542,21 +546,36 @@ fn windows_installer_launch_plan(
         });
     }
 
-    // Tauri's setup executable is NSIS-based. NSIS silent mode is `/S`;
-    // `/SILENT` is an Inno Setup flag and is ignored by NSIS.
+    // CodexBar release setup executables are built by rust/installer/codexbar.iss
+    // (Inno Setup). Silent installs skip the installer's postinstall [Run]
+    // entry, so the update helper relaunches CodexBar after setup exits.
     Ok(WindowsInstallerLaunchPlan {
         program: installer_path.to_path_buf(),
-        args: vec![std::ffi::OsString::from("/S")],
+        args: vec![
+            std::ffi::OsString::from("/SILENT"),
+            std::ffi::OsString::from("/SUPPRESSMSGBOXES"),
+            std::ffi::OsString::from("/CLOSEAPPLICATIONS"),
+            std::ffi::OsString::from("/NORESTART"),
+        ],
     })
 }
 
 #[cfg(target_os = "windows")]
-fn windows_installer_apply_script(plan: &WindowsInstallerLaunchPlan, current_pid: u32) -> String {
+fn windows_installer_apply_script(
+    plan: &WindowsInstallerLaunchPlan,
+    current_pid: u32,
+    relaunch_path: &Path,
+) -> String {
     format!(
         "Wait-Process -Id {current_pid} -ErrorAction SilentlyContinue; \
-         Start-Process -FilePath {} -ArgumentList {}",
+         $p = Start-Process -FilePath {} -ArgumentList {} -PassThru -Wait; \
+         if ($p.ExitCode -eq 0 -and (Test-Path {})) {{ \
+           Start-Process -FilePath {} -ArgumentList @('menubar') \
+         }}",
         powershell_single_quoted(&plan.program.to_string_lossy()),
         powershell_argument_list(&plan.args),
+        powershell_single_quoted(&relaunch_path.to_string_lossy()),
+        powershell_single_quoted(&relaunch_path.to_string_lossy()),
     )
 }
 
@@ -794,26 +813,39 @@ mod tests {
 
     #[cfg(target_os = "windows")]
     #[test]
-    fn windows_setup_exe_uses_nsis_silent_flag() {
+    fn windows_setup_exe_uses_inno_silent_flags() {
         let path = PathBuf::from(r"C:\Temp\CodexBar-1.2.3-Setup.exe");
 
         let plan = windows_installer_launch_plan(&path).expect("launch plan");
 
         assert_eq!(plan.program, path);
-        assert_eq!(plan.args, vec![std::ffi::OsString::from("/S")]);
+        assert_eq!(
+            plan.args,
+            vec![
+                std::ffi::OsString::from("/SILENT"),
+                std::ffi::OsString::from("/SUPPRESSMSGBOXES"),
+                std::ffi::OsString::from("/CLOSEAPPLICATIONS"),
+                std::ffi::OsString::from("/NORESTART"),
+            ]
+        );
     }
 
     #[cfg(target_os = "windows")]
     #[test]
     fn windows_apply_script_waits_for_current_process_before_installing() {
         let path = PathBuf::from(r"C:\Temp\CodexBar-1.2.3-Setup.exe");
+        let relaunch_path = PathBuf::from(r"C:\Program Files\CodexBar\codexbar-desktop.exe");
         let plan = windows_installer_launch_plan(&path).expect("launch plan");
 
-        let script = windows_installer_apply_script(&plan, 12345);
+        let script = windows_installer_apply_script(&plan, 12345, &relaunch_path);
 
         assert!(script.contains("Wait-Process -Id 12345"));
         assert!(script.contains(r"Start-Process -FilePath 'C:\Temp\CodexBar-1.2.3-Setup.exe'"));
-        assert!(script.contains("-ArgumentList @('/S')"));
+        assert!(script.contains(
+            "-ArgumentList @('/SILENT','/SUPPRESSMSGBOXES','/CLOSEAPPLICATIONS','/NORESTART')"
+        ));
+        assert!(script.contains("-PassThru -Wait"));
+        assert!(script.contains(r"Start-Process -FilePath 'C:\Program Files\CodexBar\codexbar-desktop.exe' -ArgumentList @('menubar')"));
     }
 
     #[cfg(target_os = "windows")]
