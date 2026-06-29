@@ -462,8 +462,6 @@ pub fn start_background_download(
 ///
 /// The installer should handle upgrading the application while it's closed.
 pub fn apply_update(installer_path: &PathBuf) -> Result<(), String> {
-    use std::process::Command;
-
     // Verify the file exists
     if !installer_path.exists() {
         return Err(format!("Installer not found: {:?}", installer_path));
@@ -480,19 +478,13 @@ pub fn apply_update(installer_path: &PathBuf) -> Result<(), String> {
         );
     }
 
-    // Spawn the installer process
-    // Using /SILENT for NSIS-style installers, or /quiet for MSI
-    // The installer should detect the running app and wait or prompt
     #[cfg(target_os = "windows")]
-    {
-        Command::new(installer_path)
-            .args(["/SILENT", "/CLOSEAPPLICATIONS"])
-            .spawn()
-            .map_err(|e| format!("Failed to launch installer: {}", e))?;
-    }
+    spawn_windows_installer(installer_path)?;
 
     #[cfg(not(target_os = "windows"))]
     {
+        use std::process::Command;
+
         Command::new(installer_path)
             .spawn()
             .map_err(|e| format!("Failed to launch installer: {}", e))?;
@@ -500,6 +492,54 @@ pub fn apply_update(installer_path: &PathBuf) -> Result<(), String> {
 
     // Exit the application to allow the installer to proceed
     std::process::exit(0);
+}
+
+#[cfg(target_os = "windows")]
+fn spawn_windows_installer(installer_path: &Path) -> Result<(), String> {
+    use std::process::Command;
+
+    let plan = windows_installer_launch_plan(installer_path)?;
+    Command::new(&plan.program)
+        .args(&plan.args)
+        .spawn()
+        .map_err(|e| format!("Failed to launch installer: {}", e))?;
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+struct WindowsInstallerLaunchPlan {
+    program: PathBuf,
+    args: Vec<std::ffi::OsString>,
+}
+
+#[cfg(target_os = "windows")]
+fn windows_installer_launch_plan(
+    installer_path: &Path,
+) -> Result<WindowsInstallerLaunchPlan, String> {
+    let extension = installer_path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+
+    if extension == "msi" {
+        return Ok(WindowsInstallerLaunchPlan {
+            program: PathBuf::from("msiexec.exe"),
+            args: vec![
+                std::ffi::OsString::from("/i"),
+                installer_path.as_os_str().to_os_string(),
+                std::ffi::OsString::from("/quiet"),
+                std::ffi::OsString::from("/norestart"),
+            ],
+        });
+    }
+
+    // Tauri's setup executable is NSIS-based. NSIS silent mode is `/S`;
+    // `/SILENT` is an Inno Setup flag and is ignored by NSIS.
+    Ok(WindowsInstallerLaunchPlan {
+        program: installer_path.to_path_buf(),
+        args: vec![std::ffi::OsString::from("/S")],
+    })
 }
 
 /// Check if there's a pending update ready to install
@@ -703,5 +743,35 @@ mod tests {
         let wrong = "0".repeat(64);
         let err = verify_installer_hash(&path, &wrong).unwrap_err();
         assert!(err.contains("SHA256 mismatch"));
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_setup_exe_uses_nsis_silent_flag() {
+        let path = PathBuf::from(r"C:\Temp\CodexBar-1.2.3-Setup.exe");
+
+        let plan = windows_installer_launch_plan(&path).expect("launch plan");
+
+        assert_eq!(plan.program, path);
+        assert_eq!(plan.args, vec![std::ffi::OsString::from("/S")]);
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_msi_uses_msiexec_quiet_install() {
+        let path = PathBuf::from(r"C:\Temp\CodexBar-1.2.3.msi");
+
+        let plan = windows_installer_launch_plan(&path).expect("launch plan");
+
+        assert_eq!(plan.program, PathBuf::from("msiexec.exe"));
+        assert_eq!(
+            plan.args,
+            vec![
+                std::ffi::OsString::from("/i"),
+                path.as_os_str().to_os_string(),
+                std::ffi::OsString::from("/quiet"),
+                std::ffi::OsString::from("/norestart"),
+            ]
+        );
     }
 }
