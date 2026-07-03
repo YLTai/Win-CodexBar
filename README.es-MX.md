@@ -120,14 +120,14 @@ Consulta el historial completo en [CHANGELOG.md](CHANGELOG.md).
 # Requisitos previos: Node.js + pnpm. Rust y MinGW se instalan automáticamente cuando se necesitan.
 git clone https://github.com/Finesssee/Win-CodexBar.git
 cd Win-CodexBar
-.\dev.ps1
+.\scripts\dev.ps1
 ```
 
 Opciones útiles de desarrollo:
 
 ```powershell
-.\dev.ps1 -Release      # compilación optimizada
-.\dev.ps1 -SkipBuild    # relanzar la última compilación
+.\scripts\dev.ps1 -Release      # compilación optimizada
+.\scripts\dev.ps1 -SkipBuild    # relanzar la última compilación
 ```
 
 Ejemplos de CLI:

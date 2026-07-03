@@ -113,14 +113,14 @@
 # 前置要求：Node.js + pnpm — Rust 和 MinGW 将自动安装
 git clone https://github.com/Finesssee/Win-CodexBar.git
 cd Win-CodexBar
-.\dev.ps1
+.\scripts\dev.ps1
 ```
 
 脚本会自动安装 Rust/MinGW（如缺失）、构建 Tauri 桌面壳层并启动应用。
 
 ```powershell
-.\dev.ps1 -Release          # 优化构建
-.\dev.ps1 -SkipBuild        # 跳过构建，直接启动
+.\scripts\dev.ps1 -Release          # 优化构建
+.\scripts\dev.ps1 -SkipBuild        # 跳过构建，直接启动
 ```
 
 ## 下载

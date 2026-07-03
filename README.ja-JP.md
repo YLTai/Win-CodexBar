@@ -59,14 +59,14 @@ Claude では、Claude の設定ページと同じ使用量に近づけるため
 # 前提: Node.js + pnpm。Rust と MinGW は必要に応じてスクリプトがインストールします。
 git clone https://github.com/Finesssee/Win-CodexBar.git
 cd Win-CodexBar
-.\dev.ps1
+.\scripts\dev.ps1
 ```
 
 便利な開発フラグ:
 
 ```powershell
-.\dev.ps1 -Release      # 最適化ビルド
-.\dev.ps1 -SkipBuild    # 直前のビルドを再起動
+.\scripts\dev.ps1 -Release      # 最適化ビルド
+.\scripts\dev.ps1 -SkipBuild    # 直前のビルドを再起動
 ```
 
 CLI 例:

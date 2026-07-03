@@ -59,14 +59,14 @@ Claude는 Claude 설정 페이지의 사용량과 맞추기 위해 브라우저 
 # 사전 요구 사항: Node.js + pnpm. Rust와 MinGW는 필요할 때 스크립트가 설치합니다.
 git clone https://github.com/Finesssee/Win-CodexBar.git
 cd Win-CodexBar
-.\dev.ps1
+.\scripts\dev.ps1
 ```
 
 유용한 개발 플래그:
 
 ```powershell
-.\dev.ps1 -Release      # 최적화 빌드
-.\dev.ps1 -SkipBuild    # 마지막 빌드 다시 실행
+.\scripts\dev.ps1 -Release      # 최적화 빌드
+.\scripts\dev.ps1 -SkipBuild    # 마지막 빌드 다시 실행
 ```
 
 CLI 예시:

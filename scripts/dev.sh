@@ -2,15 +2,15 @@
 # Build and run the CodexBar Tauri desktop shell on Linux / WSL.
 #
 # Usage:
-#   ./dev.sh                 # debug build + run
-#   ./dev.sh --release       # optimised build
-#   ./dev.sh --skip-build    # run last build
-#   ./dev.sh --verbose       # enable debug logging when launching desktop shell
-#   ./dev.sh --cli           # run backend CLI instead of the desktop shell
+#   ./scripts/dev.sh                 # debug build + run
+#   ./scripts/dev.sh --release       # optimised build
+#   ./scripts/dev.sh --skip-build    # run last build
+#   ./scripts/dev.sh --verbose       # enable debug logging when launching desktop shell
+#   ./scripts/dev.sh --cli           # run backend CLI instead of the desktop shell
 
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 RUST_DIR="$REPO_ROOT/rust"
 TAURI_APP_DIR="$REPO_ROOT/apps/desktop-tauri"
 

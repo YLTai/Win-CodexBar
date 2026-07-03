@@ -17,10 +17,10 @@
     Enable debug logging via RUST_LOG for the Tauri desktop shell.
 
 .EXAMPLE
-    .\dev.ps1                  # debug build + run
-    .\dev.ps1 -Release         # release build + run
-    .\dev.ps1 -SkipBuild       # run last build
-    .\dev.ps1 -Verbose         # debug build + run with verbose logging
+    .\scripts\dev.ps1                  # debug build + run
+    .\scripts\dev.ps1 -Release         # release build + run
+    .\scripts\dev.ps1 -SkipBuild       # run last build
+    .\scripts\dev.ps1 -Verbose         # debug build + run with verbose logging
 #>
 
 param(
@@ -32,7 +32,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$RepoRoot = $PSScriptRoot
+$RepoRoot = Split-Path -Parent $PSScriptRoot
 $TauriFrontendDir = Join-Path $RepoRoot "apps\desktop-tauri"
 $TargetDir = Join-Path $RepoRoot "target"
 $DesktopBinaryName = "codexbar-desktop-tauri.exe"
@@ -95,7 +95,7 @@ if (-not $hasCargo -or ($needsDlltool -and -not $hasDlltool)) {
     if ($needsDlltool -and -not $hasDlltool) { $missing += "dlltool (MinGW-w64)" }
     Write-Host "Missing prerequisites: $($missing -join ', ')" -ForegroundColor Yellow
     Write-Host ""
-    Write-Host "Install the required tools, restart your terminal, then rerun .\dev.ps1." -ForegroundColor Yellow
+    Write-Host "Install the required tools, restart your terminal, then rerun .\scripts\dev.ps1." -ForegroundColor Yellow
     Write-Host ""
     Write-Host "Required:" -ForegroundColor Cyan
     Write-Host "  - Rust/Cargo: https://rustup.rs/ or 'mise install rust@stable'" -ForegroundColor Cyan

@@ -36,10 +36,10 @@ cargo build -p codexbar --release
 ## Dev Mode (Hot Reload)
 
 ```powershell
-.\dev.ps1                   # default debug build + launch
-.\dev.ps1 -Release          # optimised build
-.\dev.ps1 -Verbose          # debug logging
-.\dev.ps1 -SkipBuild        # run last build without rebuilding
+.\scripts\dev.ps1           # default debug build + launch
+.\scripts\dev.ps1 -Release  # optimised build
+.\scripts\dev.ps1 -Verbose  # debug logging
+.\scripts\dev.ps1 -SkipBuild # run last build without rebuilding
 ```
 
 Or directly:
@@ -112,8 +112,7 @@ Win-CodexBar/
 │       ├── tray/                # Tray icon rendering
 │       └── main.rs              # CLI entry point
 ├── docs/                        # Documentation
-├── dev.ps1                      # Windows dev launcher
-└── dev.sh                       # WSL/Linux dev launcher
+└── scripts/                     # Dev/release helper scripts
 ```
 
 ## Running Tests

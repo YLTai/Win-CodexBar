@@ -8,7 +8,7 @@ requires [WSLg](https://github.com/microsoft/wslg) (Windows 11, build 22000+).
 ```bash
 git clone https://github.com/Finesssee/Win-CodexBar.git
 cd Win-CodexBar
-./dev.sh
+./scripts/dev.sh
 ```
 
 This will:
@@ -18,8 +18,8 @@ This will:
 
 CLI-only mode (no display server needed):
 ```bash
-./dev.sh --cli              # codexbar usage -p all
-./dev.sh --release          # optimised build
+./scripts/dev.sh --cli              # codexbar usage -p all
+./scripts/dev.sh --release          # optimised build
 ```
 
 ## How It Works
