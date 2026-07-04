@@ -1,5 +1,12 @@
 # Changelog
 
+## [Windows] 0.38.2 - 2026-07-05
+
+### Fixed
+- Fix tray flyout flicker/hide when opened from the Windows tray overflow.
+
+---
+
 ## [Windows] 0.38.1 - 2026-07-04
 
 ### Changed
