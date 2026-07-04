@@ -1,7 +1,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import type { BootstrapState, ProviderUsageSnapshot } from "../types/bridge";
-import { setSurfaceMode, openSettingsWindow, quitApp as quitApplication } from "../lib/tauri";
+import { openFlyoutWindow, openSettingsWindow, quitApp as quitApplication, reorderProviders } from "../lib/tauri";
 import { useProviders } from "../hooks/useProviders";
 import { useSettings } from "../hooks/useSettings";
 import { useUpdateState } from "../hooks/useUpdateState";
@@ -96,6 +96,9 @@ export default function PopOutPanel({
   const handleGridClick = useCallback((nextProviderId: string | null) => {
     setSelectedProviderId(nextProviderId);
   }, []);
+  const handleReorder = useCallback((orderedIds: string[]) => {
+    void reorderProviders(orderedIds).catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (!providerId || selectedProviderId !== providerId || providerOrderKey.length === 0) return;
@@ -139,7 +142,11 @@ export default function PopOutPanel({
     openSettingsWindow("general");
   }, []);
   const goTray = useCallback(() => {
-    setSurfaceMode("trayPanel", { kind: "summary" });
+    // The flyout ("Pop Out Dashboard") is now its own dedicated OS window
+    // rather than a state of the shared `main` window's surface-mode
+    // machine, so "back to tray" opens it directly instead of switching
+    // `main`'s mode.
+    void openFlyoutWindow().catch(() => {});
   }, []);
   const openAbout = useCallback(() => {
     openSettingsWindow("about");
@@ -225,6 +232,7 @@ export default function PopOutPanel({
         expanded={gridExpanded}
         onExpandedChange={setGridExpanded}
         onSelect={handleGridClick}
+        onReorder={handleReorder}
       />
       <div className="provider-grid__divider" />
       <div className="menu-stack">

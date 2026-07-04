@@ -15,11 +15,15 @@ const tauriMocks = vi.hoisted(() => ({
   openReleasePage: vi.fn(),
   setSurfaceMode: vi.fn(),
   dismissTrayPanel: vi.fn(),
+  beginFlyoutGesture: vi.fn().mockResolvedValue(undefined),
+  endFlyoutGesture: vi.fn().mockResolvedValue(undefined),
   openSettingsWindow: vi.fn(),
   quitApp: vi.fn(),
   getWorkAreaRect: vi.fn(),
   reanchorTrayPanel: vi.fn(),
   revealTrayPanelWindow: vi.fn(),
+  flyoutStoredSize: vi.fn().mockResolvedValue(null),
+  setFlyoutSize: vi.fn().mockResolvedValue(undefined),
   openProviderDashboard: vi.fn(),
   openProviderStatusPage: vi.fn(),
   getProviderChartData: vi.fn(),
@@ -37,8 +41,12 @@ const windowMocks = vi.hoisted(() => ({
   getCurrentWindow: vi.fn(() => ({
     setSize: vi.fn().mockResolvedValue(undefined),
     close: vi.fn().mockResolvedValue(undefined),
+    scaleFactor: vi.fn().mockResolvedValue(1),
+    onResized: vi.fn().mockResolvedValue(() => {}),
+    innerSize: vi.fn().mockResolvedValue({ width: 328, height: 200 }),
   })),
   LogicalSize: vi.fn((width: number, height: number) => ({ width, height })),
+  PhysicalSize: vi.fn((width: number, height: number) => ({ width, height })),
 }));
 
 vi.mock("../lib/tauri", () => tauriMocks);
@@ -121,6 +129,7 @@ function settings(overrides: Partial<SettingsSnapshot> = {}): SettingsSnapshot {
     uiLanguage: "english",
     theme: "dark",
     windowScalePercent: 125,
+    trayScalePercent: 100,
     claudeAvoidKeychainPrompts: false,
     disableKeychainAccess: false,
     providerMetrics: {},
@@ -187,6 +196,7 @@ describe("TrayPanel provider grid", () => {
       target: { kind: "summary" },
     });
     tauriMocks.getSettingsSnapshot.mockResolvedValue(settings());
+    tauriMocks.updateSettings.mockResolvedValue(settings());
     tauriMocks.getUpdateState.mockResolvedValue({
       status: "idle",
       version: null,
@@ -213,6 +223,27 @@ describe("TrayPanel provider grid", () => {
         return Promise.resolve(() => {});
       },
     );
+  });
+
+  it("reveals regardless of the shared surface-mode snapshot (TrayPanel now runs in its own dedicated window)", async () => {
+    // TrayPanel is now hosted exclusively in the dedicated `flyout` OS
+    // window (see App.tsx's isFlyoutWindow() routing), so it must not depend
+    // on `main`'s surface-mode machine to know it's "open" — that machine
+    // can never report "trayPanel" anymore (main only holds
+    // Hidden/PopOut/Settings post-refactor). Overriding the snapshot mock to
+    // something else confirms the fixed-size restore + reveal gate
+    // (isFlyoutOpen, hardcoded true in TrayPanel.tsx) is no longer wired to
+    // useSurfaceMode() at all.
+    tauriMocks.getCurrentSurfaceState.mockResolvedValue({
+      mode: "popOut",
+      target: { kind: "dashboard" },
+    });
+
+    const { container } = renderTrayPanel([provider("claude", "Claude", 35)]);
+
+    await waitFor(() => {
+      expect(container.querySelector(".tray-panel-reveal--ready")).not.toBeNull();
+    });
   });
 
   it("dismisses the tray panel on unmodified Escape", async () => {
@@ -483,11 +514,67 @@ describe("TrayPanel provider grid", () => {
     expect(container.querySelector(".provider-grid__icon-overview")).toBeNull();
   });
 
+  it("renders the tray footer zoom slider above Refresh and persists trayScalePercent after the debounce", async () => {
+    const { container } = renderTrayPanel(
+      [provider("claude", "Claude", 35)],
+      { trayScalePercent: 120 },
+    );
+
+    await waitFor(() => {
+      expect(container.querySelector(".menu-surface__footer-zoom")).not.toBeNull();
+    });
+
+    const footerChildren = Array.from(
+      container.querySelectorAll(".menu-surface__footer > *"),
+    );
+    const zoomIndex = footerChildren.findIndex((el) =>
+      el.classList.contains("menu-surface__footer-zoom"),
+    );
+    const refreshIndex = footerChildren.findIndex(
+      (el) => el.textContent?.includes("Refresh"),
+    );
+    expect(zoomIndex).toBeGreaterThanOrEqual(0);
+    expect(refreshIndex).toBeGreaterThan(zoomIndex);
+
+    // Slider reflects the persisted settings value.
+    const slider = container.querySelector<HTMLInputElement>(
+      ".menu-surface__footer-zoom-slider",
+    )!;
+    expect(slider).not.toBeNull();
+    expect(slider.value).toBe("120");
+    expect(slider.min).toBe("100");
+    expect(slider.max).toBe("200");
+    expect(slider.step).toBe("5");
+    expect(
+      container.querySelector(".menu-surface__footer-zoom-value")?.textContent,
+    ).toBe("120%");
+
+    fireEvent.change(slider, { target: { value: "150" } });
+
+    // Live preview: thumb and readout update immediately from local state…
+    expect(slider.value).toBe("150");
+    expect(
+      container.querySelector(".menu-surface__footer-zoom-value")?.textContent,
+    ).toBe("150%");
+
+    // …while persistence trails the ~250ms debounce (not synchronous).
+    expect(tauriMocks.updateSettings).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(tauriMocks.updateSettings).toHaveBeenCalledWith({
+        trayScalePercent: 150,
+      });
+    });
+    expect(tauriMocks.updateSettings).toHaveBeenCalledTimes(1);
+  });
+
   it("reveals the tray panel if the native resize pass fails", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     windowMocks.getCurrentWindow.mockReturnValue({
       setSize: vi.fn().mockRejectedValue(new Error("resize failed")),
       close: vi.fn().mockResolvedValue(undefined),
+      scaleFactor: vi.fn().mockResolvedValue(1),
+      onResized: vi.fn().mockResolvedValue(() => {}),
+      innerSize: vi.fn().mockResolvedValue({ width: 328, height: 200 }),
     });
 
     const { container } = renderTrayPanel([provider("claude", "Claude", 35)]);
@@ -504,6 +591,9 @@ describe("TrayPanel provider grid", () => {
     windowMocks.getCurrentWindow.mockReturnValue({
       setSize,
       close: vi.fn().mockResolvedValue(undefined),
+      scaleFactor: vi.fn().mockResolvedValue(1),
+      onResized: vi.fn().mockResolvedValue(() => {}),
+      innerSize: vi.fn().mockResolvedValue({ width: 328, height: 200 }),
     });
 
     const { container } = renderTrayPanel([provider("claude", "Claude", 35)]);
@@ -530,6 +620,9 @@ describe("TrayPanel provider grid", () => {
     windowMocks.getCurrentWindow.mockReturnValue({
       setSize,
       close: vi.fn().mockResolvedValue(undefined),
+      scaleFactor: vi.fn().mockResolvedValue(1),
+      onResized: vi.fn().mockResolvedValue(() => {}),
+      innerSize: vi.fn().mockResolvedValue({ width: 328, height: 200 }),
     });
     const denseProviders = TEST_PROVIDER_CATALOG.slice(0, 36).map(([id, displayName]) =>
       provider(id, displayName),
@@ -551,6 +644,9 @@ describe("TrayPanel provider grid", () => {
     windowMocks.getCurrentWindow.mockReturnValue({
       setSize,
       close: vi.fn().mockResolvedValue(undefined),
+      scaleFactor: vi.fn().mockResolvedValue(1),
+      onResized: vi.fn().mockResolvedValue(() => {}),
+      innerSize: vi.fn().mockResolvedValue({ width: 328, height: 200 }),
     });
     const errorProvider = {
       ...provider("abacus", "Abacus AI", 0),

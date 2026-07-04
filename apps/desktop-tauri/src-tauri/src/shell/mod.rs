@@ -7,6 +7,7 @@ use crate::surface::SurfaceMode;
 use crate::surface_target::SurfaceTarget;
 
 pub(crate) mod dwm;
+pub mod flyout_window;
 mod geometry;
 mod position;
 pub mod settings_window;

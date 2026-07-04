@@ -6,11 +6,13 @@ use chrono::{DateTime, Utc};
 use reqwest::Client;
 use reqwest::header::{HeaderValue, RETRY_AFTER};
 use serde::Deserialize;
-use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use crate::core::{NamedRateWindow, ProviderError, ProviderFetchResult, RateWindow, UsageSnapshot};
+
+mod credentials_store;
+mod refresh;
 
 /// OAuth credentials from Claude CLI
 #[derive(Debug, Clone)]
@@ -38,26 +40,6 @@ impl ClaudeOAuthCredentials {
     pub fn has_scope(&self, scope: &str) -> bool {
         self.scopes.iter().any(|s| s == scope)
     }
-}
-
-/// Raw JSON structure from Claude CLI credentials file
-#[derive(Debug, Deserialize)]
-struct CredentialsFile {
-    #[serde(rename = "claudeAiOauth")]
-    claude_ai_oauth: Option<OAuthData>,
-}
-
-#[derive(Debug, Deserialize)]
-struct OAuthData {
-    #[serde(rename = "accessToken")]
-    access_token: Option<String>,
-    #[serde(rename = "refreshToken")]
-    refresh_token: Option<String>,
-    #[serde(rename = "expiresAt")]
-    expires_at: Option<f64>, // milliseconds since epoch
-    scopes: Option<Vec<String>>,
-    #[serde(rename = "rateLimitTier")]
-    rate_limit_tier: Option<String>,
 }
 
 /// OAuth usage response from Claude API
@@ -126,10 +108,6 @@ static RATE_LIMIT_BACKOFF_UNTIL: OnceLock<Mutex<Option<Instant>>> = OnceLock::ne
 
 impl ClaudeOAuthFetcher {
     const USAGE_URL: &'static str = "https://api.anthropic.com/api/oauth/usage";
-    const CREDENTIALS_PATH: &'static str = ".claude/.credentials.json";
-    const KEYRING_SERVICE: &'static str = "Claude Code-credentials";
-    const ENV_TOKEN_KEY: &'static str = "CODEXBAR_CLAUDE_OAUTH_TOKEN";
-    const ENV_SCOPES_KEY: &'static str = "CODEXBAR_CLAUDE_OAUTH_SCOPES";
     const DEFAULT_RATE_LIMIT_BACKOFF: Duration = Duration::from_secs(5 * 60);
 
     pub fn new() -> Self {
@@ -138,9 +116,12 @@ impl ClaudeOAuthFetcher {
         }
     }
 
-    /// Load credentials and fetch usage
+    /// Load credentials and fetch usage, transparently refreshing an expired
+    /// OAuth token first (like the Claude CLI does) so the panel stays green
+    /// without the user having to re-run `claude`.
     pub async fn fetch(&self) -> Result<ProviderFetchResult, ProviderError> {
-        let credentials = self.load_credentials()?;
+        let (credentials, source) = credentials_store::load_credentials()?;
+        let credentials = self.ensure_fresh_credentials(credentials, source).await;
         self.fetch_with_credentials(credentials).await
     }
 
@@ -176,238 +157,60 @@ impl ClaudeOAuthFetcher {
         Ok(ProviderFetchResult::new(usage, "oauth"))
     }
 
-    /// Load OAuth credentials from environment, file, or Claude Code's OS credential store.
-    pub fn load_credentials(&self) -> Result<ClaudeOAuthCredentials, ProviderError> {
-        // Try environment variables first
-        if let Some(creds) = self.load_from_environment() {
-            return Ok(creds);
+    /// If the token is expired (or about to expire), refresh it using the
+    /// refresh token and persist the new token back to `.credentials.json`.
+    /// Best-effort: on any failure the original credentials are returned so the
+    /// caller falls back to the existing "expired" handling.
+    async fn ensure_fresh_credentials(
+        &self,
+        mut credentials: ClaudeOAuthCredentials,
+        source: credentials_store::CredentialSource,
+    ) -> ClaudeOAuthCredentials {
+        // Prefer an in-memory refreshed token if it is fresher than what we just
+        // read from disk (covers a prior persist that failed to write). Scoped
+        // to this credential's own source so a refresh cached for one source
+        // (e.g. the credentials file) never shadows another (e.g. an
+        // environment-provided token).
+        if let Some(cached) = credentials_store::cached_refreshed_if_fresher(&source, &credentials)
+        {
+            credentials = cached;
         }
 
-        // Try credentials file
-        let file_error = match self.load_from_file() {
-            Ok(creds) => return Ok(creds),
-            Err(err) => err,
+        if !credentials.is_expired() {
+            return credentials;
+        }
+
+        // The credentials file is shared with the Claude Code CLI, which also
+        // refreshes it. Re-read right before hitting the network: if the CLI (or
+        // a concurrent poll) already refreshed the on-disk token, adopt it rather
+        // than rotating a second refresh token against the same account.
+        if let Ok((disk, disk_source)) = credentials_store::load_credentials() {
+            if !disk.is_expired() {
+                credentials_store::store_refreshed(&disk_source, &disk);
+                return disk;
+            }
+            credentials = disk;
+        }
+
+        let Some(refresh_token) = credentials.refresh_token.clone() else {
+            // Environment-provided tokens have no refresh token; nothing to do.
+            return credentials;
         };
 
-        // Current Claude Code builds store the same JSON payload in the OS credential store.
-        if let Some(creds) = self.load_from_keyring()? {
-            return Ok(creds);
-        }
-
-        Err(file_error)
-    }
-
-    /// Load credentials from environment variables
-    fn load_from_environment(&self) -> Option<ClaudeOAuthCredentials> {
-        let token = std::env::var(Self::ENV_TOKEN_KEY).ok()?;
-        let token = token.trim();
-        if token.is_empty() {
-            return None;
-        }
-
-        let scopes: Vec<String> = std::env::var(Self::ENV_SCOPES_KEY)
-            .ok()
-            .map(|s| {
-                s.split(',')
-                    .map(|s| s.trim().to_string())
-                    .filter(|s| !s.is_empty())
-                    .collect()
-            })
-            .unwrap_or_else(|| vec!["user:profile".to_string()]);
-
-        Some(ClaudeOAuthCredentials {
-            access_token: token.to_string(),
-            refresh_token: None,
-            expires_at: None, // Environment tokens don't expire
-            scopes,
-            rate_limit_tier: None,
-        })
-    }
-
-    /// Load credentials from ~/.claude/.credentials.json
-    fn load_from_file(&self) -> Result<ClaudeOAuthCredentials, ProviderError> {
-        let path = self.credentials_path()?;
-
-        if !path.exists() {
-            return Err(ProviderError::OAuth(
-                "Claude OAuth credentials not found. Run `claude` to authenticate.".to_string(),
-            ));
-        }
-
-        let content = std::fs::read_to_string(&path)
-            .map_err(|e| ProviderError::OAuth(format!("Failed to read credentials file: {}", e)))?;
-
-        Self::parse_credentials_json(&content)
-    }
-
-    /// Load credentials from Claude Code's OS keychain / credential manager entry.
-    fn load_from_keyring(&self) -> Result<Option<ClaudeOAuthCredentials>, ProviderError> {
-        for account in Self::keyring_account_candidates() {
-            let entry = match keyring::Entry::new(Self::KEYRING_SERVICE, &account) {
-                Ok(entry) => entry,
-                Err(err) => {
-                    tracing::debug!(
-                        "Failed to open Claude Code credential entry for account {}: {}",
-                        account,
-                        err
-                    );
-                    continue;
+        match refresh::refresh_access_token(&self.client, &refresh_token, &credentials).await {
+            Ok(refreshed) => {
+                credentials_store::store_refreshed(&source, &refreshed);
+                if let Err(err) = credentials_store::persist_refreshed_credentials(&refreshed) {
+                    tracing::debug!("Claude OAuth token refreshed but could not persist: {err}");
                 }
-            };
-
-            let content = match entry.get_password() {
-                Ok(content) => content,
-                Err(keyring::Error::NoEntry) => continue,
-                Err(keyring::Error::Ambiguous(_)) => continue,
-                Err(err) => {
-                    tracing::debug!(
-                        "Failed to read Claude Code credential entry for account {}: {}",
-                        account,
-                        err
-                    );
-                    continue;
-                }
-            };
-
-            if content.trim().is_empty() {
-                continue;
+                tracing::debug!("Refreshed expired Claude OAuth token");
+                refreshed
             }
-
-            return Self::parse_credentials_json(&content).map(Some);
-        }
-
-        #[cfg(target_os = "macos")]
-        if let Some(creds) = self.load_from_macos_security_cli()? {
-            return Ok(Some(creds));
-        }
-
-        Ok(None)
-    }
-
-    #[cfg(target_os = "macos")]
-    fn load_from_macos_security_cli(
-        &self,
-    ) -> Result<Option<ClaudeOAuthCredentials>, ProviderError> {
-        for account in Self::keyring_account_candidates() {
-            let output = match std::process::Command::new("/usr/bin/security")
-                .args([
-                    "find-generic-password",
-                    "-s",
-                    Self::KEYRING_SERVICE,
-                    "-a",
-                    &account,
-                    "-w",
-                ])
-                .output()
-            {
-                Ok(output) => output,
-                Err(err) => {
-                    tracing::debug!(
-                        "Failed to run macOS security CLI for Claude credentials: {}",
-                        err
-                    );
-                    continue;
-                }
-            };
-
-            if !output.status.success() {
-                continue;
-            }
-
-            let content = String::from_utf8_lossy(&output.stdout);
-            if content.trim().is_empty() {
-                continue;
-            }
-
-            return Self::parse_credentials_json(content.trim()).map(Some);
-        }
-
-        Ok(None)
-    }
-
-    fn parse_credentials_json(content: &str) -> Result<ClaudeOAuthCredentials, ProviderError> {
-        if let Ok(file) = serde_json::from_str::<CredentialsFile>(content)
-            && let Some(oauth) = file.claude_ai_oauth
-        {
-            return Self::credentials_from_oauth_data(oauth);
-        }
-
-        let oauth: OAuthData = serde_json::from_str(content)
-            .map_err(|e| ProviderError::OAuth(format!("Invalid credentials format: {}", e)))?;
-        Self::credentials_from_oauth_data(oauth)
-    }
-
-    fn credentials_from_oauth_data(
-        oauth: OAuthData,
-    ) -> Result<ClaudeOAuthCredentials, ProviderError> {
-        let access_token = oauth.access_token.ok_or_else(|| {
-            ProviderError::OAuth(
-                "Claude OAuth access token missing. Run `claude` to authenticate.".to_string(),
-            )
-        })?;
-
-        let access_token = access_token.trim().to_string();
-        if access_token.is_empty() {
-            return Err(ProviderError::OAuth(
-                "Claude OAuth access token is empty. Run `claude` to authenticate.".to_string(),
-            ));
-        }
-
-        // Convert milliseconds to DateTime
-        let expires_at = oauth.expires_at.map(|millis| {
-            let secs = (millis / 1000.0) as i64;
-            DateTime::from_timestamp(secs, 0).unwrap_or_else(Utc::now)
-        });
-
-        Ok(ClaudeOAuthCredentials {
-            access_token,
-            refresh_token: oauth.refresh_token,
-            expires_at,
-            scopes: oauth.scopes.unwrap_or_default(),
-            rate_limit_tier: oauth.rate_limit_tier,
-        })
-    }
-
-    fn keyring_account_candidates() -> Vec<String> {
-        let mut candidates = Vec::new();
-        for key in ["USER", "USERNAME"] {
-            if let Ok(value) = std::env::var(key) {
-                Self::push_keyring_candidate(&mut candidates, value);
+            Err(err) => {
+                tracing::debug!("Claude OAuth token refresh failed: {err}");
+                credentials
             }
         }
-
-        #[cfg(not(windows))]
-        {
-            if let Ok(output) = std::process::Command::new("whoami").output()
-                && output.status.success()
-            {
-                let value = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                Self::push_keyring_candidate(&mut candidates, value.clone());
-                if let Some((_, username)) = value.rsplit_once('\\') {
-                    Self::push_keyring_candidate(&mut candidates, username.to_string());
-                }
-                if let Some((_, username)) = value.rsplit_once('/') {
-                    Self::push_keyring_candidate(&mut candidates, username.to_string());
-                }
-            }
-        }
-
-        candidates
-    }
-
-    fn push_keyring_candidate(candidates: &mut Vec<String>, value: String) {
-        let value = value.trim();
-        if value.is_empty() || candidates.iter().any(|candidate| candidate == value) {
-            return;
-        }
-        candidates.push(value.to_string());
-    }
-
-    /// Get the credentials file path
-    fn credentials_path(&self) -> Result<PathBuf, ProviderError> {
-        dirs::home_dir()
-            .map(|home| home.join(Self::CREDENTIALS_PATH))
-            .ok_or_else(|| ProviderError::OAuth("Could not find home directory".to_string()))
     }
 
     /// Fetch usage data using OAuth credentials
@@ -713,64 +516,6 @@ mod tests {
         assert_eq!(usage.primary.used_percent, 100.0);
         assert!((usage.secondary.expect("weekly").used_percent - 14.0).abs() < 0.001);
         assert!(usage.extra_rate_windows.is_empty());
-    }
-
-    #[test]
-    fn parses_claude_code_credentials_payload() {
-        let credentials = ClaudeOAuthFetcher::parse_credentials_json(
-            r#"{
-                "claudeAiOauth": {
-                    "accessToken": "token",
-                    "refreshToken": "refresh",
-                    "expiresAt": 1770000000000,
-                    "scopes": ["user:profile"],
-                    "rateLimitTier": "default_claude_ai"
-                }
-            }"#,
-        )
-        .expect("Claude Code credential payload should parse");
-
-        assert_eq!(credentials.access_token, "token");
-        assert_eq!(credentials.refresh_token.as_deref(), Some("refresh"));
-        assert_eq!(credentials.scopes, vec!["user:profile"]);
-        assert_eq!(
-            credentials.rate_limit_tier.as_deref(),
-            Some("default_claude_ai")
-        );
-        assert!(credentials.expires_at.is_some());
-    }
-
-    #[test]
-    fn parses_direct_oauth_credentials_payload() {
-        let credentials = ClaudeOAuthFetcher::parse_credentials_json(
-            r#"{
-                "accessToken": "token",
-                "scopes": ["user:profile"]
-            }"#,
-        )
-        .expect("direct OAuth payload should parse");
-
-        assert_eq!(credentials.access_token, "token");
-        assert_eq!(credentials.scopes, vec!["user:profile"]);
-    }
-
-    #[test]
-    fn rejects_credentials_payload_without_access_token() {
-        let error = ClaudeOAuthFetcher::parse_credentials_json(
-            r#"{
-                "claudeAiOauth": {
-                    "refreshToken": "refresh",
-                    "scopes": ["user:profile"]
-                }
-            }"#,
-        )
-        .expect_err("access token is required");
-
-        assert!(
-            error
-                .to_string()
-                .contains("Claude OAuth access token missing")
-        );
     }
 
     #[test]
