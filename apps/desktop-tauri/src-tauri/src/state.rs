@@ -146,6 +146,8 @@ pub struct AppState {
     pub startup_tray_blur_grace_until: Option<std::time::Instant>,
     /// Whether the explicit startup path may use its delayed shell fallback.
     pub startup_tray_reveal_pending: bool,
+    /// One-shot permission for frontend layout code to reveal a newly opened flyout.
+    pub flyout_reveal_pending: bool,
     /// Active while a user gesture (resize drag, HTML5 drag-reorder) is
     /// running a Win32 modal loop that transiently steals focus from the
     /// WebView2 child. `(began, until)` — `until` is the hard expiry;
@@ -194,6 +196,7 @@ impl AppState {
             last_blur_dismissed_at: None,
             startup_tray_blur_grace_until: None,
             startup_tray_reveal_pending: false,
+            flyout_reveal_pending: false,
             gesture_blur_guard: None,
         }
     }
@@ -240,6 +243,18 @@ impl AppState {
 
     pub fn take_startup_tray_reveal_fallback(&mut self) -> bool {
         std::mem::take(&mut self.startup_tray_reveal_pending)
+    }
+
+    pub fn arm_flyout_reveal(&mut self) {
+        self.flyout_reveal_pending = true;
+    }
+
+    pub fn clear_flyout_reveal(&mut self) {
+        self.flyout_reveal_pending = false;
+    }
+
+    pub fn take_pending_flyout_reveal(&mut self) -> bool {
+        std::mem::take(&mut self.flyout_reveal_pending)
     }
 
     /// Arm the gesture blur guard for 15s. Called when the frontend reports
@@ -459,6 +474,33 @@ mod tests {
 
         assert!(state.take_startup_tray_reveal_fallback());
         assert!(!state.take_startup_tray_reveal_fallback());
+    }
+
+    #[test]
+    fn hidden_flyout_cannot_be_revealed_by_stale_layout_work() {
+        let mut state = AppState::new();
+
+        assert!(!state.take_pending_flyout_reveal());
+    }
+
+    #[test]
+    fn pending_flyout_reveal_is_consumed_once() {
+        let mut state = AppState::new();
+
+        state.arm_flyout_reveal();
+
+        assert!(state.take_pending_flyout_reveal());
+        assert!(!state.take_pending_flyout_reveal());
+    }
+
+    #[test]
+    fn pending_flyout_reveal_can_be_cleared_without_revealing() {
+        let mut state = AppState::new();
+
+        state.arm_flyout_reveal();
+        state.clear_flyout_reveal();
+
+        assert!(!state.take_pending_flyout_reveal());
     }
 
     #[test]
