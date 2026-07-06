@@ -131,11 +131,20 @@ pub fn open_or_focus(app: &AppHandle, position: Option<(i32, i32)>) -> Result<()
     if show_grace_starts_now(true) {
         mark_shown(app);
     }
+    arm_reveal(app)?;
     Ok(())
 }
 
 fn show_grace_starts_now(first_build_hidden: bool) -> bool {
     !first_build_hidden
+}
+
+fn arm_reveal(app: &AppHandle) -> Result<(), String> {
+    let state = app
+        .try_state::<Mutex<AppState>>()
+        .ok_or_else(|| "app state unavailable".to_string())?;
+    state.lock().map_err(|e| e.to_string())?.arm_flyout_reveal();
+    Ok(())
 }
 
 /// Toggle the flyout: hide if open, open (or focus) otherwise. Consumes a
@@ -169,6 +178,13 @@ pub fn toggle_with_blur_consume(app: &AppHandle, position: Option<(i32, i32)>) {
 /// process/window lifecycle treating it as an app-relevant close.
 pub fn hide(app: &AppHandle) -> Result<(), String> {
     if let Some(window) = app.get_webview_window(FLYOUT_LABEL) {
+        let state = app
+            .try_state::<Mutex<AppState>>()
+            .ok_or_else(|| "app state unavailable".to_string())?;
+        state
+            .lock()
+            .map_err(|e| e.to_string())?
+            .clear_flyout_reveal();
         window.hide().map_err(|e| e.to_string())?;
     }
     Ok(())

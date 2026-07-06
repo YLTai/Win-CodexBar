@@ -76,10 +76,7 @@ pub async fn open_flyout_window(app: tauri::AppHandle) -> Result<(), String> {
 /// remembered fixed size re-applied), so Windows never shows a pre-measure
 /// blank/backing frame.
 ///
-/// No-ops when the flyout window doesn't exist — the `== TrayPanel` gate this
-/// replaced was checking "is the flyout the thing we're currently showing?";
-/// now that the flyout is its own window (not a state of `main`'s surface
-/// machine), window-existence is the equivalent check.
+/// No-ops when the flyout window doesn't exist or no one-shot reveal is pending.
 #[tauri::command]
 pub fn reveal_tray_panel_window(
     app: tauri::AppHandle,
@@ -90,6 +87,11 @@ pub fn reveal_tray_panel_window(
     let Some(window) = app.get_webview_window(crate::shell::flyout_window::FLYOUT_LABEL) else {
         return Ok(());
     };
+    let mut guard = state.lock().map_err(|e| e.to_string())?;
+    if !guard.take_pending_flyout_reveal() {
+        return Ok(());
+    }
+    drop(guard);
     window.show().map_err(|e| e.to_string())?;
     state
         .lock()
