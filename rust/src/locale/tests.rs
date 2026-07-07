@@ -145,6 +145,10 @@ fn test_japanese_tray_panel_locale_values_are_translated() {
             LocaleKey::PanelReserveLastsUntilReset,
             "リセットまで持ちます",
         ),
+        (LocaleKey::PanelShowAllProviders, "すべてのプロバイダーを表示"),
+        (LocaleKey::PanelShowFewerProviders, "表示を減らす"),
+        (LocaleKey::PanelExpected, "予測"),
+        (LocaleKey::PanelActual, "実績"),
     ];
 
     for (key, expected) in cases {
@@ -177,6 +181,10 @@ fn test_chinese_tray_panel_locale_values_are_translated() {
             LocaleKey::PanelEstimatedFromLocalLogs,
             "根据本地日志估算；可能与账单不同",
         ),
+        (LocaleKey::PanelShowAllProviders, "显示所有提供者"),
+        (LocaleKey::PanelShowFewerProviders, "显示较少提供者"),
+        (LocaleKey::PanelExpected, "预期"),
+        (LocaleKey::PanelActual, "实际"),
     ];
 
     for (key, expected) in cases {
@@ -209,6 +217,10 @@ fn test_korean_tray_panel_locale_values_are_translated() {
             LocaleKey::PanelEstimatedFromLocalLogs,
             "로컬 로그에서 추정; 청구서와 다를 수 있음",
         ),
+        (LocaleKey::PanelShowAllProviders, "모든 제공자 표시"),
+        (LocaleKey::PanelShowFewerProviders, "적은 제공자 표시"),
+        (LocaleKey::PanelExpected, "예상"),
+        (LocaleKey::PanelActual, "실제"),
     ];
 
     for (key, expected) in cases {
@@ -244,6 +256,10 @@ fn test_spanish_tray_panel_locale_values_are_translated() {
             LocaleKey::PanelEstimatedFromLocalLogs,
             "Estimado desde logs locales; puede diferir de tu factura",
         ),
+        (LocaleKey::PanelShowAllProviders, "Mostrar todos los proveedores"),
+        (LocaleKey::PanelShowFewerProviders, "Mostrar menos proveedores"),
+        (LocaleKey::PanelExpected, "Esperado"),
+        (LocaleKey::PanelActual, "Real"),
     ];
 
     for (key, expected) in cases {
