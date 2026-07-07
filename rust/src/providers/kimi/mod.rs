@@ -122,29 +122,40 @@ impl KimiProvider {
 
     /// Extract JWT token from kimi-auth cookie
     fn get_auth_token(&self) -> Result<String, ProviderError> {
-        let mut cookies = String::new();
+        let mut saw_cookie_header = false;
         let mut last_error = None;
         for domain in KIMI_COOKIE_DOMAINS {
             match get_cookie_header(domain) {
                 Ok(header) if !header.is_empty() => {
-                    cookies = header;
-                    break;
+                    saw_cookie_header = true;
+                    if let Ok(token) = Self::auth_token_from_cookie_header(&header) {
+                        return Ok(token);
+                    }
                 }
                 Ok(_) => {}
                 Err(e) => last_error = Some(e),
             }
         }
-        if cookies.is_empty() {
-            if let Some(e) = last_error {
-                return Err(ProviderError::Other(format!(
-                    "Failed to get cookies: {}",
-                    e
-                )));
-            }
-            return Err(ProviderError::AuthRequired);
+
+        if !saw_cookie_header && let Some(e) = last_error {
+            return Err(ProviderError::Other(format!(
+                "Failed to get cookies: {}",
+                e
+            )));
         }
 
-        Self::auth_token_from_cookie_header(&cookies)
+        Err(ProviderError::AuthRequired)
+    }
+
+    fn auth_token_from_cookie_headers(
+        headers: impl IntoIterator<Item = impl AsRef<str>>,
+    ) -> Result<String, ProviderError> {
+        for header in headers {
+            if let Ok(token) = Self::auth_token_from_cookie_header(header.as_ref()) {
+                return Ok(token);
+            }
+        }
+        Err(ProviderError::AuthRequired)
     }
 
     fn auth_token_from_cookie_header(cookie_header: &str) -> Result<String, ProviderError> {
@@ -667,6 +678,17 @@ mod tests {
                 .as_str(),
             "https://proxy.example/kimi/coding/v1/usages"
         );
+    }
+
+    #[test]
+    fn auth_token_search_skips_unrelated_cookie_headers() {
+        let token = KimiProvider::auth_token_from_cookie_headers([
+            "locale=en-US; device_id=abc",
+            "kimi-auth=valid-token",
+        ])
+        .unwrap();
+
+        assert_eq!(token, "valid-token");
     }
 
     #[test]
