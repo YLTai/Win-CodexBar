@@ -9,6 +9,8 @@ pub enum Language {
     English,
     /// Chinese (Simplified)
     Chinese,
+    /// Chinese (Traditional, Taiwan)
+    ChineseTraditional,
     /// Japanese
     Japanese,
     /// Korean
@@ -23,6 +25,7 @@ impl Language {
         match self {
             Language::English => "English",
             Language::Chinese => "中文",
+            Language::ChineseTraditional => "繁體中文（臺灣）",
             Language::Japanese => "日本語",
             Language::Korean => "한국어",
             Language::Spanish => "Español",
@@ -34,6 +37,7 @@ impl Language {
         &[
             Language::English,
             Language::Chinese,
+            Language::ChineseTraditional,
             Language::Japanese,
             Language::Korean,
             Language::Spanish,
@@ -46,6 +50,7 @@ impl Language {
         match self {
             Language::English => "english",
             Language::Chinese => "chinese",
+            Language::ChineseTraditional => "chinesetraditional",
             Language::Japanese => "japanese",
             Language::Korean => "korean",
             Language::Spanish => "spanish",
@@ -58,6 +63,7 @@ impl Language {
         match self {
             Language::English => &["en", "en-us"],
             Language::Chinese => &["zh", "zh-cn", "zh-hans", "中文"],
+            Language::ChineseTraditional => &["zh-tw", "zh-hant", "zh-hant-tw", "繁體中文"],
             Language::Japanese => &["ja", "ja-jp", "日本語"],
             Language::Korean => &["ko", "ko-kr", "한국어"],
             Language::Spanish => &["es", "es-mx", "español"],
@@ -256,6 +262,9 @@ pub struct ProviderConfig {
     /// Codex-only: opt out of OpenAI web "extras" surfaces.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub openai_web_extras: Option<bool>,
+    /// Codex-only: show or hide Codex Spark quota rows in presentation.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub spark_usage_visible: Option<bool>,
     /// Codex-only: enable historical usage tracking in UI.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub historical_tracking: bool,

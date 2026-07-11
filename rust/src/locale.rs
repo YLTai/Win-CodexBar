@@ -46,6 +46,7 @@ pub fn format_locale(lang: Language, key: LocaleKey, args: &[&str]) -> String {
 fn language_id(lang: Language) -> &'static LanguageIdentifier {
     static EN_US: LazyLock<LanguageIdentifier> = LazyLock::new(|| "en-US".parse().unwrap());
     static ZH_CN: LazyLock<LanguageIdentifier> = LazyLock::new(|| "zh-CN".parse().unwrap());
+    static ZH_TW: LazyLock<LanguageIdentifier> = LazyLock::new(|| "zh-TW".parse().unwrap());
     static JA_JP: LazyLock<LanguageIdentifier> = LazyLock::new(|| "ja-JP".parse().unwrap());
     static KO_KR: LazyLock<LanguageIdentifier> = LazyLock::new(|| "ko-KR".parse().unwrap());
     static ES_MX: LazyLock<LanguageIdentifier> = LazyLock::new(|| "es-MX".parse().unwrap());
@@ -53,6 +54,7 @@ fn language_id(lang: Language) -> &'static LanguageIdentifier {
     match lang {
         Language::English => &EN_US,
         Language::Chinese => &ZH_CN,
+        Language::ChineseTraditional => &ZH_TW,
         Language::Japanese => &JA_JP,
         Language::Korean => &KO_KR,
         Language::Spanish => &ES_MX,
@@ -455,6 +457,8 @@ locale_keys! {
     ProviderClaudeCookiesHelp,
     ProviderClaudeAvoidKeychainPrompts,
     ProviderClaudeAvoidKeychainPromptsHelp,
+    ProviderCodexSparkUsage,
+    ProviderCodexSparkUsageHelp,
     ProviderCursorCookieSourceHelp,
     ProviderCursorCreditsHelp,
     AutoFallbackHelp,
@@ -470,6 +474,9 @@ locale_keys! {
     PrivacyTitle,
     HidePersonalInfo,
     HidePersonalInfoHelper,
+    SectionLocalIntegrations,
+    PowerToysPipeLabel,
+    PowerToysPipeHelper,
     UpdatesTitle,
     UpdateChannelChoice,
     UpdateChannelChoiceHelper,
@@ -609,6 +616,10 @@ locale_keys! {
     // Tauri desktop shell — Advanced tab fields
     UpdateChannelStableOption,
     UpdateChannelBetaOption,
+    CodexLocalLogsTitle,
+    CodexLocalLogsCaption,
+    CodexLogPathsLabel,
+    CodexLogPathsHelper,
     AvoidKeychainPromptsLabel,
     AvoidKeychainPromptsHelper,
     DisableAllKeychainLabel,
@@ -696,6 +707,9 @@ locale_keys! {
     PanelReserveLastsUntilReset,
     PanelReserveRunsOutInDaysHours,
     PanelReserveRunsOutInHours,
+    FloatBarThirtyDayShort,
+    FloatBarNoProviders,
+    FloatBarRemainingSuffix,
 
     // Tauri desktop shell — update banner
     BannerCheckingForUpdates,
@@ -780,6 +794,9 @@ locale_keys! {
     CredsKiroLabel,
     CredsKiroHelperAvailablePrefix,
     CredsKiroHelperMissing,
+    OpenCodeGoWorkspaceTitle,
+    OpenCodeGoWorkspaceLabel,
+    OpenCodeGoWorkspaceHelp,
     CredsOpenAiHistoryHelp,
 
     // Tauri desktop shell — Token accounts (Phase 6e, review)

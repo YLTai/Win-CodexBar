@@ -6,7 +6,7 @@
 #![allow(dead_code)]
 
 use crate::core::{CostUsagePricing, ProviderId};
-use chrono::NaiveDate;
+use chrono::{DateTime, Local, NaiveDate};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -53,14 +53,24 @@ pub struct CodexTotals {
 /// Result of parsing a Codex file
 #[derive(Debug)]
 pub struct CodexParseResult {
-    /// Daily usage: day_key -> model -> [input, cached, output]
-    pub days: HashMap<String, HashMap<String, Vec<i32>>>,
+    /// Individual token-count deltas used for per-request pricing.
+    pub records: Vec<CodexUsageRecord>,
     /// Bytes parsed
     pub parsed_bytes: i64,
     /// Last model seen
     pub last_model: Option<String>,
     /// Last totals seen
     pub last_totals: Option<CodexTotals>,
+}
+
+/// A billable Codex token-count delta.
+#[derive(Debug, Clone)]
+pub struct CodexUsageRecord {
+    pub day_key: String,
+    pub model: String,
+    pub input: i32,
+    pub cached: i32,
+    pub output: i32,
 }
 
 /// Day range for scanning
@@ -103,7 +113,7 @@ pub struct JsonlScanner;
 struct CodexParserState {
     current_model: Option<String>,
     previous_totals: Option<CodexTotals>,
-    days: HashMap<String, HashMap<String, Vec<i32>>>,
+    records: Vec<CodexUsageRecord>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -179,7 +189,7 @@ impl CodexParserState {
         Self {
             current_model: initial_model,
             previous_totals: initial_totals,
-            days: HashMap::new(),
+            records: Vec::new(),
         }
     }
 
@@ -217,17 +227,17 @@ impl CodexParserState {
                 }
             }
             CodexFastEvent::TokenCount { timestamp, payload } => {
-                let Some(day_key) = timestamp.get(..10) else {
+                let Some(day_key) = codex_timestamp_day_key(timestamp) else {
                     return;
                 };
                 if !CostUsageDayRange::is_in_range(
-                    day_key,
+                    &day_key,
                     &range.scan_since_key,
                     &range.scan_until_key,
                 ) {
                     return;
                 }
-                self.record_fast_token_count(payload, day_key.to_string());
+                self.record_fast_token_count(payload, day_key);
             }
         }
     }
@@ -260,17 +270,7 @@ impl CodexParserState {
 
         let info = payload.get("info");
         let model = self.token_model(info, payload, obj);
-        let norm_model = CostUsagePricing::normalize_codex_model(&model);
-        let packed = self
-            .days
-            .entry(day_key)
-            .or_default()
-            .entry(norm_model)
-            .or_insert_with(|| vec![0, 0, 0]);
-
-        packed[0] += delta_input;
-        packed[1] += delta_cached.min(delta_input);
-        packed[2] += delta_output;
+        self.record_usage(day_key, &model, delta_input, delta_cached, delta_output);
     }
 
     fn record_fast_token_count(&mut self, payload: CodexFastPayload<'_>, day_key: String) {
@@ -288,18 +288,19 @@ impl CodexParserState {
             .and_then(|info| info.model.or(info.model_name))
             .or(payload.model)
             .or(self.current_model.as_deref())
-            .unwrap_or("gpt-5");
-        let norm_model = CostUsagePricing::normalize_codex_model(model);
-        let packed = self
-            .days
-            .entry(day_key)
-            .or_default()
-            .entry(norm_model)
-            .or_insert_with(|| vec![0, 0, 0]);
+            .unwrap_or("gpt-5")
+            .to_string();
+        self.record_usage(day_key, &model, delta_input, delta_cached, delta_output);
+    }
 
-        packed[0] += delta_input;
-        packed[1] += delta_cached.min(delta_input);
-        packed[2] += delta_output;
+    fn record_usage(&mut self, day_key: String, model: &str, input: i32, cached: i32, output: i32) {
+        self.records.push(CodexUsageRecord {
+            day_key,
+            model: CostUsagePricing::normalize_codex_model(model),
+            input,
+            cached: cached.min(input),
+            output,
+        });
     }
 
     fn token_model(&self, info: Option<&Value>, payload: &Value, obj: &Value) -> String {
@@ -416,10 +417,22 @@ fn is_candidate_codex_line(line: &str) -> bool {
 
 fn codex_line_day_key(obj: &Value, range: &CostUsageDayRange) -> Option<String> {
     let ts = obj.get("timestamp").and_then(|v| v.as_str())?;
-    let day_key = ts.get(..10)?;
+    let day_key = codex_timestamp_day_key(ts)?;
 
-    CostUsageDayRange::is_in_range(day_key, &range.scan_since_key, &range.scan_until_key)
-        .then(|| day_key.to_string())
+    CostUsageDayRange::is_in_range(&day_key, &range.scan_since_key, &range.scan_until_key)
+        .then_some(day_key)
+}
+
+fn codex_timestamp_day_key(timestamp: &str) -> Option<String> {
+    DateTime::parse_from_rfc3339(timestamp)
+        .ok()
+        .map(|ts| {
+            ts.with_timezone(&Local)
+                .date_naive()
+                .format("%Y-%m-%d")
+                .to_string()
+        })
+        .or_else(|| timestamp.get(..10).map(str::to_string))
 }
 
 fn token_count_payload(obj: &Value) -> Option<&Value> {
@@ -595,7 +608,7 @@ impl JsonlScanner {
         }
 
         Ok(CodexParseResult {
-            days: parser.days,
+            records: parser.records,
             parsed_bytes: file_size.max(parsed_bytes),
             last_model: parser.current_model,
             last_totals: parser.previous_totals,
@@ -643,6 +656,7 @@ use chrono::Datelike;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::TimeZone;
     use std::io::Write;
 
     #[test]
@@ -687,6 +701,22 @@ mod tests {
     }
 
     #[test]
+    fn codex_timestamp_day_key_uses_local_calendar_day() {
+        let today = Local::now().date_naive();
+        let local_midnight = today.and_hms_opt(0, 30, 0).unwrap();
+        let Some(local_time) = Local.from_local_datetime(&local_midnight).earliest() else {
+            return;
+        };
+        let utc_timestamp = local_time.with_timezone(&chrono::Utc).to_rfc3339();
+        let expected = today.format("%Y-%m-%d").to_string();
+
+        assert_eq!(
+            codex_timestamp_day_key(&utc_timestamp).as_deref(),
+            Some(expected.as_str())
+        );
+    }
+
+    #[test]
     fn test_fast_codex_parser_reads_last_usage_from_payload() {
         let range = CostUsageDayRange::new(
             NaiveDate::from_ymd_opt(2026, 5, 31).unwrap(),
@@ -703,9 +733,11 @@ mod tests {
             &range,
         );
 
-        let day = parser.days.get("2026-05-31").expect("day usage");
-        let usage = day.get("gpt-5.5").expect("model usage");
-        assert_eq!(usage, &vec![120, 40, 9]);
+        assert_eq!(parser.records.len(), 1);
+        let record = &parser.records[0];
+        assert_eq!(record.day_key, "2026-05-31");
+        assert_eq!(record.model, "gpt-5.5");
+        assert_eq!((record.input, record.cached, record.output), (120, 40, 9));
         assert_eq!(parser.current_model.as_deref(), Some("gpt-5.5"));
     }
 
@@ -726,9 +758,15 @@ mod tests {
             &range,
         );
 
-        let day = parser.days.get("2026-05-31").expect("day usage");
-        let usage = day.get("gpt-5").expect("model usage");
-        assert_eq!(usage, &vec![1250, 260, 90]);
+        assert_eq!(parser.records.len(), 2);
+        assert_eq!(
+            parser
+                .records
+                .iter()
+                .map(|record| (record.input, record.cached, record.output))
+                .collect::<Vec<_>>(),
+            vec![(1_000, 200, 50), (250, 60, 40)]
+        );
         let totals = parser.previous_totals.expect("last totals");
         assert_eq!(totals.input, 1250);
         assert_eq!(totals.cached, 260);
@@ -748,9 +786,10 @@ mod tests {
             &range,
         );
 
-        let day = parser.days.get("2026-05-31").expect("day usage");
-        let usage = day.get("gpt-5").expect("model usage");
-        assert_eq!(usage, &vec![20, 5, 3]);
+        assert_eq!(parser.records.len(), 1);
+        let record = &parser.records[0];
+        assert_eq!(record.model, "gpt-5");
+        assert_eq!((record.input, record.cached, record.output), (20, 5, 3));
     }
 
     #[test]
@@ -775,8 +814,10 @@ mod tests {
             JsonlScanner::parse_codex_file(file.path(), &range, 0, None, None).expect("parse");
 
         assert_eq!(parsed.last_model.as_deref(), Some("gpt-5.5"));
-        let day = parsed.days.get("2026-05-31").expect("day usage");
-        let usage = day.get("gpt-5.5").expect("model usage");
-        assert_eq!(usage, &vec![45, 12, 8]);
+        assert_eq!(parsed.records.len(), 1);
+        let record = &parsed.records[0];
+        assert_eq!(record.day_key, "2026-05-31");
+        assert_eq!(record.model, "gpt-5.5");
+        assert_eq!((record.input, record.cached, record.output), (45, 12, 8));
     }
 }

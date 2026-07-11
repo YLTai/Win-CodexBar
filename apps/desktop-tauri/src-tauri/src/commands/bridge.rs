@@ -106,6 +106,17 @@ pub struct ProviderUsageSnapshot {
     pub fetch_duration_ms: Option<u128>,
 }
 
+pub(crate) fn filter_hidden_codex_spark_rows(
+    snapshot: &mut ProviderUsageSnapshot,
+    spark_usage_visible: bool,
+) {
+    if snapshot.provider_id == "codex" && !spark_usage_visible {
+        snapshot
+            .extra_rate_windows
+            .retain(|extra| !matches!(extra.id.as_str(), "codex-spark" | "codex-spark-weekly"));
+    }
+}
+
 pub(crate) fn pace_stage_str(stage: codexbar::core::PaceStage) -> &'static str {
     use codexbar::core::PaceStage;
     match stage {
@@ -413,11 +424,14 @@ pub struct SettingsSnapshot {
     auto_download_updates: bool,
     install_updates_on_quit: bool,
     global_shortcut: String,
+    codex_custom_sessions_dirs: Vec<String>,
     ui_language: &'static str,
     theme: &'static str,
     window_scale_percent: u16,
     tray_scale_percent: u16,
+    powertoys_status_pipe_enabled: bool,
     claude_avoid_keychain_prompts: bool,
+    codex_spark_usage_visible: bool,
     disable_keychain_access: bool,
     provider_metrics: std::collections::HashMap<String, &'static str>,
     float_bar_enabled: bool,
@@ -454,6 +468,7 @@ pub fn get_settings_snapshot() -> SettingsSnapshot {
 impl From<Settings> for SettingsSnapshot {
     fn from(settings: Settings) -> Self {
         let avoid_keychain_prompts = settings.claude_avoid_keychain_prompts();
+        let codex_spark_usage_visible = settings.codex_spark_usage_visible();
 
         let provider_order = settings.provider_display_order_names();
         let enabled_providers = provider_order
@@ -494,11 +509,14 @@ impl From<Settings> for SettingsSnapshot {
             auto_download_updates: settings.auto_download_updates,
             install_updates_on_quit: settings.install_updates_on_quit,
             global_shortcut: settings.global_shortcut,
+            codex_custom_sessions_dirs: settings.codex_custom_sessions_dirs,
             ui_language: language_label(settings.ui_language),
             theme: theme_label(settings.theme),
             window_scale_percent: settings.window_scale_percent,
             tray_scale_percent: settings.tray_scale_percent,
+            powertoys_status_pipe_enabled: settings.powertoys_status_pipe_enabled,
             claude_avoid_keychain_prompts: avoid_keychain_prompts,
+            codex_spark_usage_visible,
             disable_keychain_access: settings.disable_keychain_access,
             provider_metrics,
             float_bar_enabled: settings.float_bar_enabled,

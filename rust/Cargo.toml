@@ -1,6 +1,6 @@
 [package]
 name = "codexbar"
-version = "0.41.1"
+version = "0.41.3"
 edition = "2024"
 authors = ["CodexBar Contributors"]
 description = "Windows and WSL system tray app for monitoring AI provider usage limits"
@@ -40,6 +40,8 @@ anyhow = "1"
 
 # Date/time
 chrono = { version = "0.4", features = ["serde"] }
+chrono-tz = "0.10"
+iana-time-zone = "0.1"
 
 # Async utilities
 async-trait = "0.1"

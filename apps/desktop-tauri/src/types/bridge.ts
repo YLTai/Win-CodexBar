@@ -21,7 +21,13 @@ export type MetricPreference =
   | "extraUsage"
   | "average";
 
-export type Language = "english" | "chinese" | "japanese" | "korean" | "spanish";
+export type Language =
+  | "english"
+  | "chinese"
+  | "chinesetraditional"
+  | "japanese"
+  | "korean"
+  | "spanish";
 
 /** Language catalog entry from the Rust backend. */
 export type LanguageOption = {
@@ -184,13 +190,17 @@ export interface SettingsSnapshot {
   autoDownloadUpdates: boolean;
   installUpdatesOnQuit: boolean;
   globalShortcut: string;
+  /** Extra Codex home or sessions directories scanned for local cost estimates. */
+  codexCustomSessionsDirs: string[];
   uiLanguage: Language;
   theme: ThemePreference;
   /** 100..=250 — clamped server-side. */
   windowScalePercent: number;
   /** 100..=200 — clamped server-side. */
   trayScalePercent: number;
+  powertoysStatusPipeEnabled: boolean;
   claudeAvoidKeychainPrompts: boolean;
+  codexSparkUsageVisible: boolean;
   disableKeychainAccess: boolean;
   providerMetrics: Record<string, MetricPreference>;
   floatBarEnabled: boolean;
@@ -235,11 +245,14 @@ export interface SettingsUpdate {
   autoDownloadUpdates?: boolean;
   installUpdatesOnQuit?: boolean;
   globalShortcut?: string;
+  codexCustomSessionsDirs?: string[];
   uiLanguage?: Language;
   theme?: ThemePreference;
   windowScalePercent?: number;
   trayScalePercent?: number;
+  powertoysStatusPipeEnabled?: boolean;
   claudeAvoidKeychainPrompts?: boolean;
+  codexSparkUsageVisible?: boolean;
   disableKeychainAccess?: boolean;
   /** Map of provider CLI name → metric preference label. */
   providerMetrics?: Record<string, MetricPreference>;

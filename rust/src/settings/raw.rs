@@ -104,6 +104,7 @@ pub(super) struct RawSettings {
     provider_order: Vec<String>,
     #[serde(default = "default_global_shortcut")]
     global_shortcut: String,
+    codex_custom_sessions_dirs: Vec<String>,
     auto_download_updates: bool,
     install_updates_on_quit: bool,
     ui_language: Language,
@@ -112,6 +113,8 @@ pub(super) struct RawSettings {
     window_scale_percent: u16,
     #[serde(default = "default_tray_scale_percent")]
     tray_scale_percent: u16,
+    #[serde(default)]
+    powertoys_status_pipe_enabled: bool,
 
     #[serde(default)]
     float_bar_enabled: bool,
@@ -192,12 +195,14 @@ impl Default for RawSettings {
             provider_metrics: s.provider_metrics,
             provider_order: s.provider_order,
             global_shortcut: s.global_shortcut,
+            codex_custom_sessions_dirs: s.codex_custom_sessions_dirs,
             auto_download_updates: s.auto_download_updates,
             install_updates_on_quit: s.install_updates_on_quit,
             ui_language: s.ui_language,
             theme: s.theme,
             window_scale_percent: s.window_scale_percent,
             tray_scale_percent: s.tray_scale_percent,
+            powertoys_status_pipe_enabled: s.powertoys_status_pipe_enabled,
             float_bar_enabled: s.float_bar_enabled,
             float_bar_opacity: s.float_bar_opacity,
             float_bar_scale: s.float_bar_scale,
@@ -449,12 +454,14 @@ impl From<RawSettings> for Settings {
                 normalize_provider_order(&raw.provider_order)
             },
             global_shortcut: raw.global_shortcut,
+            codex_custom_sessions_dirs: raw.codex_custom_sessions_dirs,
             auto_download_updates: raw.auto_download_updates,
             install_updates_on_quit: raw.install_updates_on_quit,
             ui_language: raw.ui_language,
             theme: raw.theme,
             window_scale_percent: clamp_window_scale_percent(raw.window_scale_percent),
             tray_scale_percent: clamp_tray_scale_percent(raw.tray_scale_percent),
+            powertoys_status_pipe_enabled: raw.powertoys_status_pipe_enabled,
             float_bar_enabled: raw.float_bar_enabled,
             float_bar_opacity: clamp_float_bar_opacity(raw.float_bar_opacity),
             float_bar_scale: clamp_float_bar_scale(raw.float_bar_scale),

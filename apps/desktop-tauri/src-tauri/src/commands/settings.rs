@@ -31,11 +31,14 @@ pub struct SettingsUpdate {
     pub auto_download_updates: Option<bool>,
     pub install_updates_on_quit: Option<bool>,
     pub global_shortcut: Option<String>,
+    pub codex_custom_sessions_dirs: Option<Vec<String>>,
     pub ui_language: Option<String>,
     pub theme: Option<String>,
     pub window_scale_percent: Option<u16>,
     pub tray_scale_percent: Option<u16>,
+    pub powertoys_status_pipe_enabled: Option<bool>,
     pub claude_avoid_keychain_prompts: Option<bool>,
+    pub codex_spark_usage_visible: Option<bool>,
     pub disable_keychain_access: Option<bool>,
     /// Map of provider CLI name → metric preference label.
     pub provider_metrics: Option<std::collections::HashMap<String, String>>,
@@ -54,6 +57,7 @@ impl SettingsUpdate {
     fn notifies_float_bar(&self) -> bool {
         self.enabled_providers.is_some()
             || self.refresh_interval_secs.is_some()
+            || self.codex_custom_sessions_dirs.is_some()
             || self.high_usage_threshold.is_some()
             || self.critical_usage_threshold.is_some()
             || self.show_as_used.is_some()
@@ -73,6 +77,7 @@ impl SettingsUpdate {
             || self.reset_time_relative.is_some()
             || self.menu_bar_display_mode.is_some()
             || self.provider_metrics.is_some()
+            || self.codex_spark_usage_visible.is_some()
             || self.enabled_providers.is_some()
             || self.ui_language.is_some()
     }
@@ -204,11 +209,20 @@ impl SettingsUpdate {
         if let Some(v) = self.auto_download_updates {
             settings.auto_download_updates = v;
         }
+        if let Some(v) = self.codex_custom_sessions_dirs.clone() {
+            settings.codex_custom_sessions_dirs = normalize_custom_sessions_dirs(v);
+        }
         if let Some(v) = self.install_updates_on_quit {
             settings.install_updates_on_quit = v;
         }
+        if let Some(v) = self.powertoys_status_pipe_enabled {
+            settings.powertoys_status_pipe_enabled = v;
+        }
         if let Some(v) = self.claude_avoid_keychain_prompts {
             settings.set_claude_avoid_keychain_prompts(v);
+        }
+        if let Some(v) = self.codex_spark_usage_visible {
+            settings.set_codex_spark_usage_visible(v);
         }
         if let Some(v) = self.disable_keychain_access {
             settings.disable_keychain_access = v;
@@ -243,6 +257,24 @@ impl SettingsUpdate {
         float_bar_patch.apply(settings);
         Ok(float_bar_patch)
     }
+}
+
+fn normalize_custom_sessions_dirs(dirs: Vec<String>) -> Vec<String> {
+    let mut seen = HashSet::new();
+    let mut out = Vec::new();
+
+    for dir in dirs {
+        let trimmed = dir.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let key = trimmed.replace('/', "\\").to_ascii_lowercase();
+        if seen.insert(key) {
+            out.push(trimmed.to_string());
+        }
+    }
+
+    out
 }
 
 fn apply_provider_metrics(
@@ -283,6 +315,7 @@ pub async fn update_settings(
 ) -> Result<SettingsSnapshot, String> {
     let mut settings = Settings::load();
     let notify_float_bar = patch.notifies_float_bar();
+    let clear_local_usage_cache = patch.codex_custom_sessions_dirs.is_some();
     let rebuild_tray_menu = patch.rebuilds_tray_menu();
     let refresh_tray_presentation = patch.refreshes_tray_presentation();
     let previous_language = settings.ui_language;
@@ -295,6 +328,9 @@ pub async fn update_settings(
     }
 
     settings.save().map_err(|e| e.to_string())?;
+    if clear_local_usage_cache {
+        crate::commands::clear_provider_local_usage_cache();
+    }
 
     crate::floatbar::after_settings_saved(&app, &float_bar_patch, &settings, notify_float_bar);
     if rebuild_tray_menu {
@@ -303,7 +339,6 @@ pub async fn update_settings(
     if refresh_tray_presentation {
         crate::tray_bridge::refresh_tray_presentation(&app);
     }
-
     // Notify other windows (PopOut dashboard, tray, float bar) so they re-read
     // settings live — e.g. the Display tab's window-scale slider takes effect
     // immediately instead of only after the PopOut is reopened.

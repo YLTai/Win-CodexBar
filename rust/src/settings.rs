@@ -133,6 +133,10 @@ pub struct Settings {
     #[serde(default = "default_global_shortcut")]
     pub global_shortcut: String,
 
+    /// Additional Codex home or sessions directories to include in local cost scans.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub codex_custom_sessions_dirs: Vec<String>,
+
     /// Automatically download updates in the background
     #[serde(default)]
     pub auto_download_updates: bool,
@@ -158,6 +162,10 @@ pub struct Settings {
     /// 100 % is normal size; higher values enlarge the flyout content.
     #[serde(default = "default_tray_scale_percent")]
     pub tray_scale_percent: u16,
+
+    /// Enable the local PowerToys Command Palette status pipe.
+    #[serde(default)]
+    pub powertoys_status_pipe_enabled: bool,
 
     /// Show the always-on-top floating capacity bar.
     #[serde(default)]
@@ -321,6 +329,7 @@ fn default_api_region(id: ProviderId) -> &'static str {
 
 /// Default for the codex `openai_web_extras` boolean (true = show extras).
 const DEFAULT_CODEX_OPENAI_WEB_EXTRAS: bool = true;
+const DEFAULT_CODEX_SPARK_USAGE_VISIBLE: bool = true;
 
 impl Default for Settings {
     fn default() -> Self {
@@ -357,12 +366,14 @@ impl Default for Settings {
             provider_metrics: HashMap::new(), // Empty = use Automatic for all
             provider_order: Vec::new(), // Empty = canonical ProviderId::all() order
             global_shortcut: default_global_shortcut(), // Ctrl+Shift+U by default
+            codex_custom_sessions_dirs: Vec::new(),
             auto_download_updates: false, // Require explicit opt-in for background downloads
             install_updates_on_quit: false, // Don't auto-install on quit by default
             ui_language: Language::default(), // English by default
             theme: ThemePreference::default(), // Auto (follows prefers-color-scheme)
             window_scale_percent: default_window_scale_percent(),
             tray_scale_percent: default_tray_scale_percent(),
+            powertoys_status_pipe_enabled: false,
             float_bar_enabled: false,
             float_bar_opacity: default_float_bar_opacity(),
             float_bar_scale: default_float_bar_scale(),
@@ -723,6 +734,18 @@ impl Settings {
         self.provider_config_mut(id).openai_web_extras = Some(value);
     }
 
+    /// Codex Spark rows are visible by default.
+    pub fn spark_usage_visible(&self, id: ProviderId) -> bool {
+        self.provider_configs
+            .get(&id)
+            .and_then(|c| c.spark_usage_visible)
+            .unwrap_or(DEFAULT_CODEX_SPARK_USAGE_VISIBLE)
+    }
+
+    pub fn set_spark_usage_visible(&mut self, id: ProviderId, value: bool) {
+        self.provider_config_mut(id).spark_usage_visible = Some(value);
+    }
+
     /// Per-provider historical-tracking toggle (currently codex-only).
     pub fn historical_tracking(&self, id: ProviderId) -> bool {
         self.provider_configs
@@ -914,6 +937,12 @@ impl Settings {
     }
     pub fn set_codex_openai_web_extras(&mut self, v: bool) {
         self.set_openai_web_extras(ProviderId::Codex, v)
+    }
+    pub fn codex_spark_usage_visible(&self) -> bool {
+        self.spark_usage_visible(ProviderId::Codex)
+    }
+    pub fn set_codex_spark_usage_visible(&mut self, v: bool) {
+        self.set_spark_usage_visible(ProviderId::Codex, v)
     }
     pub fn codex_historical_tracking(&self) -> bool {
         self.historical_tracking(ProviderId::Codex)
