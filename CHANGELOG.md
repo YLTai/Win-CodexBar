@@ -1,5 +1,27 @@
 # Changelog
 
+## [Windows] 0.42.0 - 2026-07-12
+
+### Added
+- Add the Wayfinder provider.
+- Add opt-in local and SSH Agent Sessions for Codex and Claude.
+- Add predictive pace warnings and provider/window-specific usage thresholds.
+- Add GPT-5.6 Sol, Terra, and Luna pricing and model aliases.
+- Show Claude model-scoped weekly quotas from OAuth, web, and CLI sources.
+
+### Changed
+- Reorganize Settings and restore Providers as a dedicated tab.
+- Keep every Settings tab at the same window size.
+- Improve token-cost pricing coverage, freshness, and refresh coalescing.
+
+### Fixed
+- Keep refresh intervals anchored and provider cards synchronized with completed work.
+- Avoid quota refreshes for visual-only settings and provider reorder changes.
+- Improve Antigravity detection, Gemini paid-tier labels, Ollama authentication, and other provider parsing.
+- Eliminate the duplicate FloatBar cost control and keep local-cost display opt-in.
+
+---
+
 ## [Windows] 0.41.3 - 2026-07-11
 
 ### Added
